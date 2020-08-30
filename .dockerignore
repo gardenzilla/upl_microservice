@@ -1,0 +1,4 @@
+data/
+target/
+!target/release/upl_microservice
+Cargo.lock
