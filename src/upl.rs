@@ -15,114 +15,57 @@
  * Locations:
  * - Stock
  * - Cart/Purchase
+ *
+ * InHouse / Sold/Out
+ *    *         *
+ *     \        |
+ *      * Manage|updates & lookup  
+ *              |
+ *              * No updates at all (LOCK)
+ *
+ * Követelmény:
+ *  - UPL ID alapján egy időintervallumon belül bármikor megtalálható legyen
+ *  - Aktív UPL-ek helyszín alapján lekérhetőek legyenek
+ *  - UPL-t lehessen helyszínek között mozgatni
+ *  - Már kosárba tett UPL ne legyen frissíthető
+ *  - Már kosárba tett UPL megtalálható legyen, de ne "kezeljük"
+ *  - Egy UPL-ről tudnunk kell, hogy már el van-e adva
+ *
+ * UPL és egyéb kapcsolatok:
+ *  - Beszerző modul-ból érkeznek
+ *  - Selejtező modul selejtezést tud bejegyezni
+ *  - Raktár modul le tud kérni raktár készletet
+ *  - Kosár modul a kosár tartalmát tudja lekérni, de ő saját listát is vezet
+ *  - Árazás modul le tudja kérdezni a raktáron lévő termékek "hasznait" és a már eladott
+ *    termékek "hasznait"
  */
 use crate::prelude::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub enum UplLocation {
-    Stock(i32),
-    Cart(i32),
+pub struct Upl {
+  // Unique UPL ID
+  // i32 for the better inter
+  // service communication
+  id: i32,
+  // Related SKU
+  // SKU maybe should be i32 as well?
+  sku: String,
+  procurement_id: i32,
+  procurement_net_price: f32,
 }
 
-pub struct Upl {
-    id: i32,                                // UPL ID
-    sku: String,                            // SKU (ID)
-    procurement_id: Option<i32>,            // Procurement ID
-    procurement_net_price: Option<f32>,     // net procurement price
-    net_retail_price: Option<f32>,          // ?
-    net_retail_price_culed: Option<f32>,    // ?
-    can_divide: bool,                       // boolean operator
-    best_before: Option<DateTime<Utc>>,     // todo: DateTime<Utc>!
-    location_history: Vec<UplHistoryItem>,  // todo: + DateTime per event. Only location change?
-    inherited_from: Option<i32>,            // If it's derived from another UPL
-    is_opened: bool,                        // If it's opened
-    has_damage: Option<(i32, String, f32)>, // Option<CullId, Description, culled net price>?
+pub struct UplId(u32);
+
+impl UplId {
+  fn from_i32() -> Self {
+    unimplemented!()
+  }
 }
 
 impl Upl {
-    pub fn new(
-        id: i32,
-        sku: String,
-        procurement_id: Option<i32>,
-        procurement_net_price: Option<f32>,
-        best_before: Option<DateTime<Utc>>,
-        can_divide: bool,
-    ) -> Self {
-        Self {
-            id,
-            sku,
-            procurement_id,
-            procurement_net_price,
-            net_retail_price: None,
-            net_retail_price_culed: None,
-            can_divide,
-            best_before,
-            location_history: Vec::new(),
-            inherited_from: None,
-            is_opened: false,
-            has_damage: None,
-        }
-    }
-}
-
-pub struct UplHistoryItem {
-    created_at: DateTime<Utc>,
-    created_by: String,
-    location: UplLocation,
-}
-
-pub mod New {
-    use crate::prelude::*;
-    use std::collections::HashMap;
-    type SKU = String;
-    pub struct UplPhdr {
-        upl_id: u32,
-        sku: SKU,
-    }
-
-    enum LocationKind {
-        Stock,
-        Cart,
-        Delivery,
-        Customer,
-    }
-    struct Location {
-        id: u32,
-        kind: LocationKind,
-        upl_store: HashMap<SKU, Vec<UplPhdr>>,
-    }
-
-    struct UplLocations {
-        stock: Vec<Location>,
-        cart: Vec<Location>,
-        delivery: Vec<Location>,
-    }
-
-    impl UplLocations {
-        pub fn move_upl(
-            &mut self,
-            from_kind: &str,
-            from_id: u32,
-            to_kind: &str,
-            to_id: u32,
-            sku: &SKU,
-            upl_id: u32,
-        ) -> ServiceResult<()> {
-            let mut from_place = match from_kind {
-                "stock" => &mut self.stock,
-                "cart" => &mut self.cart,
-                "delivery" => &mut self.delivery,
-                _ => return Err(ServiceError::not_found("Given from kind not found")),
-            };
-            let mut to_place = match to_kind {
-                "stock" => &mut self.stock,
-                "cart" => &mut self.cart,
-                "delivery" => &mut self.delivery,
-                _ => return Err(ServiceError::not_found("Given to kind not found")),
-            };
-            Ok(())
-        }
-    }
+  pub fn new(id: UplId) -> Self {
+    unimplemented!()
+  }
 }

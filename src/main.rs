@@ -1,6 +1,7 @@
+use packman::*;
+
+mod id;
 pub mod prelude;
 mod upl;
 
-fn main() {
-    println!("Hello, world!");
-}
+fn main() {}
