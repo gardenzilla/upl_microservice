@@ -112,5 +112,7 @@ mod tests {
     assert_eq!(is_valid(108), true);
     assert_eq!(is_valid(993), true);
     assert_eq!(is_valid(994), false);
+    assert_eq!(is_valid(2349671), true);
+    assert_eq!(is_valid(2349672), false);
   }
 }
