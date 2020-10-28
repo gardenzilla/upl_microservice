@@ -1,7 +1,12 @@
 use packman::*;
 
-mod id;
+pub mod id;
 pub mod prelude;
-mod upl;
+pub mod upl;
 
-fn main() {}
+pub use id::*;
+
+fn main() {
+  let num = UplId::new(19);
+  println!("{:?}", is_valid(num));
+}
