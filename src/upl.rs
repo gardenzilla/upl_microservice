@@ -77,7 +77,12 @@ pub enum Unit {
   Piece,
   Mm,
   Ml,
-  gram,
+  Gram,
+}
+
+pub enum Lock {
+  CartLock { cart_id: u32 },
+  None,
 }
 
 pub struct Upl {
@@ -98,6 +103,8 @@ pub struct Upl {
   // Previous locations
   // history
   location_history: Vec<Location>,
+  // Applied retail VAT
+  vat: Option<Vat>,
   // Retail net price
   // Currently applied net
   // retail price for this product
@@ -107,28 +114,16 @@ pub struct Upl {
   // the procurement process and before the price
   // validation process.
   retail_net_price: Option<f32>,
-  // Retail gross price
-  // This is the current official
-  // price for the product
-  // validation process.
-  retail_gross_price: Option<f32>,
-  // Applied retail VAT
-  retail_vat: Option<Vat>,
   // If the product is injured
   // it should be scraped. This field
   // contains the related scrap id
-  scrap_id: Option<u32>,
+  scrap_id: Option<u32>, // TODO: scrap_price_log?
   // Related scrap comment
   // if there any
   scrap_comment: Option<String>,
   // Related scrap price
   // if there any
   scrap_retail_net_price: Option<f32>,
-  // Related scrap gross_price
-  // if there any
-  // It's joined to scrap_retail_net_price
-  // and their value must change together
-  scrap_retail_gross_price: Option<f32>,
   // Best before date
   // Only for perishable goods.
   // Optional, but when we have one, we use
@@ -151,9 +146,44 @@ pub struct Upl {
   // If a UPL is already divided, related SKU update wont
   // affect it.
   divisible: bool,
+  // Lock enum
+  // When a UPL is locked by any reason,
+  // that UPL cannot be updated.
+  lock: Lock,
   // Userid who created
   created_by: String,
   // Utc datetime when this object
   // created
   date_created: DateTime<Utc>,
+  // Experimental field
+  // true when we expect the Upl object
+  // to be outdated.
+  // e.g.: returning after a locked period
+  dirty: bool,
+}
+
+impl Upl {
+  /// Check whether a UPL is locked,
+  /// or not.
+  pub fn is_locked(&self) -> bool {
+    match self.lock {
+      Lock::None => false,
+      _ => true,
+    }
+  }
+  /// Get UPL lock None if no lock
+  /// otherwise the given lock kind
+  /// variant
+  pub fn get_lock(&self) -> &Lock {
+    &self.lock
+  }
+  pub fn is_scraped(&self) -> bool {
+    match self.scrap_id {
+      Some(_) => true,
+      _ => false,
+    }
+  }
+  pub fn is_dirty(&self) -> bool {
+    self.dirty
+  }
 }
