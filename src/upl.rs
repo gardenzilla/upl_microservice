@@ -92,7 +92,7 @@ pub struct Upl {
   id: id::UplId,
   // Related SKU
   // SKU maybe should be i32 as well?
-  sku: String,
+  sku: i32,
   // * Procurement
   procurement_id: i32,
   // Net wholesale price in which
@@ -104,6 +104,7 @@ pub struct Upl {
   // history
   location_history: Vec<Location>,
   // Applied retail VAT
+  // Without VAT cannot return any price data
   vat: Option<Vat>,
   // Retail net price
   // Currently applied net
@@ -112,17 +113,21 @@ pub struct Upl {
   // doesn't need to be priced to sell
   // Mainly a newly registered UPL, after
   // the procurement process and before the price
-  // validation process.
+  // validation process. Updated only when there
+  // is no scrap_retail_net_price set
   retail_net_price: Option<f32>,
   // If the product is injured
   // it should be scraped. This field
   // contains the related scrap id
-  scrap_id: Option<u32>, // TODO: scrap_price_log?
+  scrap_id: Option<i32>, // TODO: scrap_price_log?
   // Related scrap comment
   // if there any
+  // From the sku scrap comment from the
+  // related scrap record
   scrap_comment: Option<String>,
   // Related scrap price
-  // if there any
+  // if there any.
+  // Can set if there is related scrap_id
   scrap_retail_net_price: Option<f32>,
   // Best before date
   // Only for perishable goods.
@@ -185,5 +190,10 @@ impl Upl {
   }
   pub fn is_dirty(&self) -> bool {
     self.dirty
+  }
+  pub fn can_sell(&self) -> bool {
+    // Can sell if
+    // there is VAT set, and there is retail price or scrap retail price given
+    self.vat.is_some() && (self.scrap_retail_net_price.is_some() | self.retail_net_price.is_some())
   }
 }
