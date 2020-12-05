@@ -1,6 +1,7 @@
 use crate::id;
 use crate::prelude::*;
 use chrono::prelude::*;
+use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -11,8 +12,16 @@ pub trait _Upl {
   fn move_upl(&mut self, from: u32, to: u32, upl_id: u32) -> Result<(), String>;
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Location {
+  Stock(u32),
   Cart(u32),
+}
+
+impl Default for Location {
+  fn default() -> Self {
+    Self::Stock(0)
+  }
 }
 
 /// UPL Kind
@@ -25,6 +34,7 @@ pub enum Location {
 ///   DerivedProduct => its an opened SKU, but the moved out part, and its moved to another
 ///                     package. Based on its appearance we cannot tell which SKU its related
 ///                     but we can tell, which product it is.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Kind {
   // UPL representing a single SKU
   // Has its own UPL ID
@@ -61,10 +71,20 @@ pub enum Kind {
   },
 }
 
+impl Default for Kind {
+  fn default() -> Self {
+    Self::Sku {
+      product_id: 0,
+      sku: 0,
+    }
+  }
+}
+
 /// Lock kinds
 /// Cart lock means the given UPL is locked to a specific Cart
 /// so it cannot move away, as its under a sales process.
 /// None means there is no lock, so the UPL can be moved away.
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Lock {
   Cart(u32),
   None,
@@ -77,6 +97,7 @@ impl Default for Lock {
   }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Upl {
   // Unique UPL ID
   // i32 for the better inter
@@ -141,6 +162,26 @@ pub struct Upl {
   date_created: DateTime<Utc>,
 }
 
+impl Default for Upl {
+  fn default() -> Self {
+    Self {
+      id: id::UplId::default(),
+      kind: Kind::default(),
+      procurement_id: 0,
+      procurement_net_price: 0.0,
+      location: Location::default(),
+      scrap_id: None,
+      scrap_comment: None,
+      scrap_retail_net_price: None,
+      best_before: None,
+      divisible_amount: None,
+      lock: Lock::default(),
+      created_by: "".into(),
+      date_created: Utc::now(),
+    }
+  }
+}
+
 impl Upl {
   /// Check whether a UPL is locked,
   /// or not.
@@ -161,5 +202,13 @@ impl Upl {
       Some(_) => true,
       _ => false,
     }
+  }
+}
+
+impl VecPackMember for Upl {
+  type Out = u32;
+
+  fn get_id(&self) -> &Self::Out {
+    &self.id
   }
 }

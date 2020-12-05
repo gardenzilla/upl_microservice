@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+use std::ops::Deref;
+
 // 10-y|xxx|y
 //   \  ---  \
 //    *--|----validation number(s)
@@ -50,6 +53,7 @@ pub fn is_valid(n: u32) -> bool {
   false
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct UplId(u32);
 
 impl UplId {
@@ -65,6 +69,14 @@ impl UplId {
       // I use unwrap or default as there is no
       // chance to run on error @petermezei
       .unwrap_or_default()
+  }
+}
+
+impl Deref for UplId {
+  type Target = u32;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
 }
 

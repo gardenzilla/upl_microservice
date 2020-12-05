@@ -16,6 +16,7 @@
 // along with Gardenzilla.  If not, see <http://www.gnu.org/licenses/>.
 
 use chrono::prelude::*;
+use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 
 // Reservation storage
