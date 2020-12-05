@@ -4,85 +4,77 @@ use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/**
- * [ ] VecPack<Upl>
- * [ ] Location index
- * [ ] Create new location
- * [ ] Move between location
- * [ ] Location history log
- * [ ] Best before date
- * [ ] Procurement ID
- * [ ] Devide
- * [ ] Merge
- * [ ] UPL_ID library (create from i32; validate)
- * [ ] Set Price
- * [ ] Set culling price (selejtezés általi árcsökkenés)
- *
- * Locations:
- * - Stock
- * - Cart/Purchase
- *
- * InHouse / Sold/Out
- *    *         *
- *     \        |
- *      * Manage|updates & lookup  
- *              |
- *              * No updates at all (LOCK)
- *
- * Követelmény:
- *  - UPL ID alapján egy időintervallumon belül bármikor megtalálható legyen
- *  - Aktív UPL-ek helyszín alapján lekérhetőek legyenek
- *  - UPL-t lehessen helyszínek között mozgatni
- *  - Már kosárba tett UPL ne legyen frissíthető
- *  - Már kosárba tett UPL megtalálható legyen, de ne "kezeljük"
- *  - Egy UPL-ről tudnunk kell, hogy már el van-e adva
- *
- * UPL és egyéb kapcsolatok:
- *  - Beszerző modul-ból érkeznek
- *  - Selejtező modul selejtezést tud bejegyezni
- *  - Raktár modul le tud kérni raktár készletet
- *  - Kosár modul a kosár tartalmát tudja lekérni, de ő saját listát is vezet
- *  - Árazás modul le tudja kérdezni a raktáron lévő termékek "hasznait" és a már eladott
- *    termékek "hasznait"
- */
+pub trait _Upl {
+  fn get_piece(&self) -> u32; // Should be a better name
+  fn lock(&mut self, cart_id: u32) -> Result<(), String>;
+  fn unlock(&mut self, cart_id: u32) -> Result<(), String>;
+  fn move_upl(&mut self, from: u32, to: u32, upl_id: u32) -> Result<(), String>;
+}
 
 pub enum Location {
   Cart(u32),
-  Stock(u32),
 }
 
-/// VAT enum
-/// represents the internally used VAT variants.
-/// Currently based on the Hungarian TAX law.
-// TODO: Implement this based on the pricing module
-pub enum Vat {
-  /// Percentage based VAT
-  /// such as 27%, 5%, etc..
-  /// It also could be _27, _5, AAM, FAD
-  /// and implement a to string conversion
-  /// in the way the cart and invoice modules need
-  Percentage(u32),
-  /// Alanyi adómentes
-  AAM,
-  FAD,
+/// UPL Kind
+/// Represents the UPL phisical appearance
+/// Can be
+///   SKU => UPL is an un-opened SKU
+///   BulkSku => UPL is a bulk of un-opened SKUs
+///   OpenedSku =>  UPL represents a SKU that has opened and some of its quantity
+///                 has already taken out.
+///   DerivedProduct => its an opened SKU, but the moved out part, and its moved to another
+///                     package. Based on its appearance we cannot tell which SKU its related
+///                     but we can tell, which product it is.
+pub enum Kind {
+  // UPL representing a single SKU
+  // Has its own UPL ID
+  Sku {
+    product_id: u32,
+    sku: u32,
+  },
+  // Muliple un-opened SKU in a bulk package
+  // sub UPLs cannot have a UPL ID yet, but we all of them
+  // share the same UPL attributes. So when we split this bulk
+  // package we create the UPLs by cloning its attributes.
+  BulkSku {
+    product_id: u32,
+    sku: u32,
+  },
+  // An opened sku
+  // An original sku has expanded,
+  // and a part of it is already out of it.
+  OpenedSku {
+    product_id: u32,
+    sku: u32,
+    amount: u32,
+  },
+  // Piece of product that
+  // derives from an opened sku
+  DerivedProduct {
+    // Related product ID
+    product_id: u32,
+    // Derived SKU
+    // Can be only Sku, or OpenedSku
+    derived_from: u32,
+    // Amount in the products unit
+    amount: u32,
+  },
 }
 
-pub enum Quantity {
-  Simple(u32),
-  Complex(u32, u32),
-  Partial(u32),
-}
-
-pub enum Unit {
-  Piece,
-  Mm,
-  Ml,
-  Gram,
-}
-
+/// Lock kinds
+/// Cart lock means the given UPL is locked to a specific Cart
+/// so it cannot move away, as its under a sales process.
+/// None means there is no lock, so the UPL can be moved away.
 pub enum Lock {
-  CartLock { cart_id: u32 },
+  Cart(u32),
   None,
+}
+
+// Default implementation for Lock
+impl Default for Lock {
+  fn default() -> Self {
+    Self::None
+  }
 }
 
 pub struct Upl {
@@ -90,35 +82,22 @@ pub struct Upl {
   // i32 for the better inter
   // service communication
   id: id::UplId,
-  // Abstract product
-  // SKU parent
-  product: u32, // ? Maybe apu (abstract product unit)
-  // Related SKU
-  // SKU maybe should be i32 as well?
-  sku: u32,
+  // UPL Kind
+  // Single or Bulk(u32)
+  // Single means its a single UPL,
+  // Bulk means its a collection of UPLs under a single UPL ID
+  // e.g. a pallet flower soil (50)
+  kind: Kind,
   // * Procurement
   procurement_id: u32,
   // Net wholesale price in which
   // this item was purchased by us
   procurement_net_price: f32,
   // Current UPL location
-  location: Location,
-  // Previous locations
-  // history
-  location_history: Vec<Location>,
-  // Applied retail VAT
-  // Without VAT cannot return any price data
-  vat: Option<Vat>,
-  // Retail net price
-  // Currently applied net
-  // retail price for this product
-  // Optional, as a registered UPL
-  // doesn't need to be priced to sell
-  // Mainly a newly registered UPL, after
-  // the procurement process and before the price
-  // validation process. Updated only when there
-  // is no scrap_retail_net_price set
-  retail_net_price: Option<f32>,
+  location: Location, // todo? this way?
+  // todo! Not NOW!
+  // todo! Implement => location_history: Vec<Location>,
+  // --
   // If the product is injured
   // it should be scraped. This field
   // contains the related scrap id
@@ -144,30 +123,22 @@ pub struct Upl {
   // Inherited from Product(service), but after
   // bacome Partial(u32), it's going to be managed
   // here without responding the related Product changes.
-  quantity: Quantity,
-  // Product unit
-  // Inherited from Product(service)
-  unit: Unit,
-  // If a SKU is divisible, this field is set ture.
-  // Inherited from the related SKU's / Product(service)
-  // UPL can only be divided if this is true.
-  // If a UPL is already divided, related SKU update wont
-  // affect it.
-  divisible: bool,
+  // --
+  // Only some, if Sku can be devided, and its unopened.
+  // Once its opened, this amount will be none, and its
+  // value is moved to its kind component
+  // This value represents the SKU original divisible quantity
+  divisible_amount: Option<u32>,
   // Lock enum
   // When a UPL is locked by any reason,
   // that UPL cannot be updated.
+  // ~ Only ~ the lock owner can unlock
   lock: Lock,
   // Userid who created
   created_by: String,
   // Utc datetime when this object
   // created
   date_created: DateTime<Utc>,
-  // Experimental field
-  // true when we expect the Upl object
-  // to be outdated.
-  // e.g.: returning after a locked period
-  dirty: bool,
 }
 
 impl Upl {
@@ -191,60 +162,4 @@ impl Upl {
       _ => false,
     }
   }
-  pub fn is_dirty(&self) -> bool {
-    self.dirty
-  }
-  pub fn can_sell(&self) -> bool {
-    // Can sell if
-    // there is VAT set, and there is retail price or scrap retail price given
-    self.vat.is_some() && (self.scrap_retail_net_price.is_some() | self.retail_net_price.is_some())
-  }
 }
-
-mod v2 {
-  struct UplData {}
-
-  enum Upl {
-    Single(UplData),
-    Pallet(UplData, u32),
-  }
-
-  impl Upl {
-    fn get_amount(&self) -> u32 {
-      match self {
-        Upl::Single(_) => 1,
-        Upl::Pallet(_, a) => *a,
-      }
-    }
-  }
-
-  enum Lock {
-    Cart(u32),
-  }
-
-  enum Location {
-    Stock(u32),
-    // Delivery(u32),
-    Purchase(u32),
-  }
-
-  trait UplStore {
-    fn move_upl(&mut self, upl_id: u32, from: u32, to: u32) -> Result<&Upl, ()>;
-    fn lock_cart(&mut self, upl_id: u32, cart_id: u32) -> Result<&Upl, ()>;
-    fn unlock(&mut self, upl_id: u32) -> Result<&Upl, ()>;
-    fn get(&self, upl_id: u32) -> Result<&Upl, ()>;
-    fn get_by_location(&self, location_id: u32, upl_id: u32) -> Result<Vec<&Upl>, ()>;
-  }
-
-  fn _main() {
-    let store: Vec<Upl> = Vec::new();
-  }
-}
-
-// SKU => Promise(CartItem, Piece) / Real(Vec<UplId>)
-
-// message Upl {
-//   string id = 1;
-//   ..;
-//   string kind = b;
-// }
