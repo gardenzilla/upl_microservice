@@ -90,11 +90,14 @@ pub struct Upl {
   // i32 for the better inter
   // service communication
   id: id::UplId,
+  // Abstract product
+  // SKU parent
+  product: u32, // ? Maybe apu (abstract product unit)
   // Related SKU
   // SKU maybe should be i32 as well?
-  sku: i32,
+  sku: u32,
   // * Procurement
-  procurement_id: i32,
+  procurement_id: u32,
   // Net wholesale price in which
   // this item was purchased by us
   procurement_net_price: f32,
@@ -197,3 +200,51 @@ impl Upl {
     self.vat.is_some() && (self.scrap_retail_net_price.is_some() | self.retail_net_price.is_some())
   }
 }
+
+mod v2 {
+  struct UplData {}
+
+  enum Upl {
+    Single(UplData),
+    Pallet(UplData, u32),
+  }
+
+  impl Upl {
+    fn get_amount(&self) -> u32 {
+      match self {
+        Upl::Single(_) => 1,
+        Upl::Pallet(_, a) => *a,
+      }
+    }
+  }
+
+  enum Lock {
+    Cart(u32),
+  }
+
+  enum Location {
+    Stock(u32),
+    // Delivery(u32),
+    Purchase(u32),
+  }
+
+  trait UplStore {
+    fn move_upl(&mut self, upl_id: u32, from: u32, to: u32) -> Result<&Upl, ()>;
+    fn lock_cart(&mut self, upl_id: u32, cart_id: u32) -> Result<&Upl, ()>;
+    fn unlock(&mut self, upl_id: u32) -> Result<&Upl, ()>;
+    fn get(&self, upl_id: u32) -> Result<&Upl, ()>;
+    fn get_by_location(&self, location_id: u32, upl_id: u32) -> Result<Vec<&Upl>, ()>;
+  }
+
+  fn _main() {
+    let store: Vec<Upl> = Vec::new();
+  }
+}
+
+// SKU => Promise(CartItem, Piece) / Real(Vec<UplId>)
+
+// message Upl {
+//   string id = 1;
+//   ..;
+//   string kind = b;
+// }
