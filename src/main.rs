@@ -4,10 +4,12 @@ use packman::*;
 use reservation::Reservation;
 use serde::Serialize;
 
-pub mod id;
-pub mod prelude;
-pub mod reservation;
-pub mod upl;
+mod archive;
+mod id;
+mod index;
+mod prelude;
+mod reservation;
+mod upl;
 
 pub use id::*;
 use upl::Upl;
@@ -27,13 +29,26 @@ impl UplStore {
 }
 
 struct UplService {
+  // Create | Get
   index: (),
+  // AddReservation | AddUpl | Increase | Descrease | ClearCart
   reservation: Pack<Vec<Reservation>>,
+  // Create | Move | ..
   store: UplStore,
+  // New | Restore | Get
   archive: (),
 }
 
-impl UplService {}
+impl UplService {
+  fn init(index: (), reservation: Pack<Vec<Reservation>>, store: UplStore, archive: ()) -> Self {
+    Self {
+      index,
+      reservation,
+      store,
+      archive,
+    }
+  }
+}
 
 fn main() {
   // Init UPL Index
@@ -58,4 +73,9 @@ fn main() {
   // Init UPL Archive
   // All the sold UPLs are stored here
   let upl_archive = ();
+
+  // Init UplService
+  let upl_service: UplService = UplService::init(upl_index, reservation, upl_store, upl_archive);
+
+  // RPC code goes here
 }
