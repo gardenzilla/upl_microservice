@@ -15,11 +15,27 @@ pub enum Location {
   Cart(u32),
 }
 
+/// UPL Kind
+/// Represents the UPL phisical appearance
+/// Can be
+///   SKU => UPL is an un-opened SKU
+///   BulkSku => UPL is a bulk of un-opened SKUs
+///   OpenedSku =>  UPL represents a SKU that has opened and some of its quantity
+///                 has already taken out.
+///   DerivedProduct => its an opened SKU, but the moved out part, and its moved to another
+///                     package. Based on its appearance we cannot tell which SKU its related
+///                     but we can tell, which product it is.
 pub enum Kind {
+  // UPL representing a single SKU
+  // Has its own UPL ID
   Sku {
     product_id: u32,
     sku: u32,
   },
+  // Muliple un-opened SKU in a bulk package
+  // sub UPLs cannot have a UPL ID yet, but we all of them
+  // share the same UPL attributes. So when we split this bulk
+  // package we create the UPLs by cloning its attributes.
   BulkSku {
     product_id: u32,
     sku: u32,
@@ -35,14 +51,30 @@ pub enum Kind {
   // Piece of product that
   // derives from an opened sku
   DerivedProduct {
+    // Related product ID
     product_id: u32,
+    // Derived SKU
+    // Can be only Sku, or OpenedSku
+    derived_from: u32,
+    // Amount in the products unit
     amount: u32,
   },
 }
 
+/// Lock kinds
+/// Cart lock means the given UPL is locked to a specific Cart
+/// so it cannot move away, as its under a sales process.
+/// None means there is no lock, so the UPL can be moved away.
 pub enum Lock {
-  CartLock { cart_id: u32 },
+  Cart(u32),
   None,
+}
+
+// Default implementation for Lock
+impl Default for Lock {
+  fn default() -> Self {
+    Self::None
+  }
 }
 
 pub struct Upl {
@@ -130,60 +162,4 @@ impl Upl {
       _ => false,
     }
   }
-  pub fn is_dirty(&self) -> bool {
-    self.dirty
-  }
-  pub fn can_sell(&self) -> bool {
-    // Can sell if
-    // there is VAT set, and there is retail price or scrap retail price given
-    self.vat.is_some() && (self.scrap_retail_net_price.is_some() | self.retail_net_price.is_some())
-  }
 }
-
-mod v2 {
-  struct UplData {}
-
-  enum Upl {
-    Single(UplData),
-    Pallet(UplData, u32),
-  }
-
-  impl Upl {
-    fn get_amount(&self) -> u32 {
-      match self {
-        Upl::Single(_) => 1,
-        Upl::Pallet(_, a) => *a,
-      }
-    }
-  }
-
-  enum Lock {
-    Cart(u32),
-  }
-
-  enum Location {
-    Stock(u32),
-    // Delivery(u32),
-    Purchase(u32),
-  }
-
-  trait UplStore {
-    fn move_upl(&mut self, upl_id: u32, from: u32, to: u32) -> Result<&Upl, ()>;
-    fn lock_cart(&mut self, upl_id: u32, cart_id: u32) -> Result<&Upl, ()>;
-    fn unlock(&mut self, upl_id: u32) -> Result<&Upl, ()>;
-    fn get(&self, upl_id: u32) -> Result<&Upl, ()>;
-    fn get_by_location(&self, location_id: u32, upl_id: u32) -> Result<Vec<&Upl>, ()>;
-  }
-
-  fn _main() {
-    let store: Vec<Upl> = Vec::new();
-  }
-}
-
-// SKU => Promise(CartItem, Piece) / Real(Vec<UplId>)
-
-// message Upl {
-//   string id = 1;
-//   ..;
-//   string kind = b;
-// }
