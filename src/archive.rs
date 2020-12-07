@@ -4,7 +4,27 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-pub enum ArchiveError {}
+// Determine UPL index path parts from UPL
+// This kind of partinioning enable us to store safily
+// millions of UPLs without crashing the FS.
+// Maximum 1_000 folder per folder and maximum 1_000 index file
+// per folder.
+// returns (million value, thousand value, hunders value)
+fn get_path(u: u32) -> (u32, u32, u32) {
+  (u / 1_000_000, u % 1_000_000 / 1000, u % 1000)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ArchiveError {
+  InternalError(String),
+  AlreadyExist(String),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ArchiveReason {
+  Sold,
+  Scrapping,
+}
 
 pub struct ArchiveStore {
   path: PathBuf,
@@ -22,7 +42,29 @@ impl ArchiveStore {
   }
   pub fn add(&self, upl: Upl) -> Result<(), ArchiveError> {
     // 1. Generate UPL Archive object path
+    let base = upl.id / 100;
+    let (parent, child, _) = get_path(base);
+    let folder_path = self.path.join(parent.to_string()).join(child.to_string());
+    let file_path = folder_path.join(format!("{}.uarch", upl.id));
+
+    // Create folder path all
+    // if not yet exist
+    if !folder_path.exists() {
+      create_dir_all(&folder_path).map_err(|e| ArchiveError::InternalError(e.to_string()))?;
+    }
+
     // 2. Check if path exist (should be impossible)
+    // If archive file does exist
+    // return error
+    if file_path.exists() {
+      return Err(ArchiveError::AlreadyExist(format!(
+        "A megadott ID már archiválva van! {}",
+        upl.id
+      )));
+    }
+
+    // 3. Set Archive history event
+
     // 3. Create Archive Object file in FS
     // 4. Convert UPL to ArchiveObject
     // 5. Serialize ArchiveObject

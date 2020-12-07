@@ -97,6 +97,12 @@ impl Default for Lock {
   }
 }
 
+pub enum Status {
+  Available,
+  Sold,
+  Scapped,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Upl {
   // Unique UPL ID

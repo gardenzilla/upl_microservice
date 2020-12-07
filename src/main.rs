@@ -46,6 +46,12 @@ impl UplService {
       archive: Mutex::new(archive),
     }
   }
+  // Archive UPL
+  fn archive(&self, upl_id: u32) {}
+  // Restore UPL from archive
+  fn restore(&self, upl_id: u32) {}
+  // Find UPL in archive
+  fn find_archive(&self, upl_id: u32) {}
 }
 
 fn main() {
