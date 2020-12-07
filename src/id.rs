@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
+// 7    => 773
+// 9    => 991
+// 10   => 2108
+// 49   => 7493
+
 // 10-y|xxx|y
 //   \  ---  \
 //    *--|----validation number(s)
