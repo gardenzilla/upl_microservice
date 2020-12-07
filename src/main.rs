@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use archive::ArchiveObject;
 use futures::lock::Mutex;
 use packman::*;
 use reservation::Reservation;
@@ -15,44 +16,34 @@ mod upl;
 pub use id::*;
 use upl::Upl;
 
-struct UplStore {
-  // Store all the managed (in-stock) UPLs
-  upls: VecPack<Upl>,
-  // Store next UPL Id
-  // to build UplId using checksum
-  next_id: Pack<u32>,
-}
-
-impl UplStore {
-  fn init(upls: VecPack<Upl>, next_id: Pack<u32>) -> Self {
-    UplStore { upls, next_id }
-  }
-}
-
 struct UplService {
   // Add | Get
   // Implemented under Mutex, so there is no FS race condition
   index: Mutex<index::UplIndex>,
   // AddReservation | AddUpl | Increase | Descrease | ClearCart
   reservation: Mutex<Pack<Vec<Reservation>>>,
+  // UPL locations
+  locations: Mutex<Pack<Vec<()>>>,
   // Create | Move | ..
-  store: Mutex<UplStore>,
+  upls: Mutex<VecPack<Upl>>,
   // New | Restore | Get
-  archive: (),
+  archive: Mutex<archive::ArchiveStore>,
 }
 
 impl UplService {
   fn init(
     index: index::UplIndex,
     reservation: Pack<Vec<Reservation>>,
-    store: UplStore,
-    archive: (),
+    locations: Pack<Vec<()>>,
+    upls: VecPack<Upl>,
+    archive: archive::ArchiveStore,
   ) -> Self {
     Self {
       index: Mutex::new(index),
       reservation: Mutex::new(reservation),
-      store: Mutex::new(store),
-      archive,
+      locations: Mutex::new(locations),
+      upls: Mutex::new(upls),
+      archive: Mutex::new(archive),
     }
   }
 }
@@ -66,23 +57,21 @@ fn main() {
     Pack::load_or_init(PathBuf::from("data"), "reservation")
       .expect("Error while loading reservation database");
 
-  // Init UPL vecpack db
+  // Init Locations DB
+  let locations: Pack<Vec<()>> = Pack::load_or_init(PathBuf::from("data"), "locations")
+    .expect("Error while loading locations db");
+
+  // Init UPL DB
   let upls: VecPack<Upl> =
     VecPack::load_or_init(PathBuf::from("data/upls")).expect("Error while loading UPL database");
 
-  // Init UPL next ID db
-  let next_id: Pack<u32> = Pack::load_or_init(PathBuf::from("data"), "upl_next_id")
-    .expect("Error while loading UPL next id db");
-
-  // Init UPL store based on the pre-loaded DBs
-  let upl_store: UplStore = UplStore::init(upls, next_id);
-
   // Init UPL Archive
   // All the sold UPLs are stored here
-  let upl_archive = ();
+  let upl_archive = archive::ArchiveStore::init(PathBuf::from("data/upl_archive"));
 
-  // Init UplService
-  let upl_service: UplService = UplService::init(upl_index, reservation, upl_store, upl_archive);
+  // Create UplService
+  let upl_service: UplService =
+    UplService::init(upl_index, reservation, locations, upls, upl_archive);
 
   // RPC code goes here
 }
