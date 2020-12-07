@@ -1,3 +1,5 @@
+use std::{collections::HashSet, hash::Hash};
+
 // Luhn algorythm
 // based on https://en.wikipedia.org/wiki/Luhn_algorithm
 fn calc_check(u: u64) -> u8 {
@@ -30,8 +32,18 @@ fn calc(n: u64, i: u32) -> u8 {
   res as u8
 }
 
-fn is_valid(n: u64) -> bool {
-  (n % 10) == calc_check(n / 10) as u64
+pub fn is_valid(n: u64) -> bool {
+  let check = calc_check(n / 100) as u64;
+  (n % 10) == 9 - check && (n % 100) / 10 == check
+}
+
+fn has_unique_elements<T>(iter: T) -> bool
+where
+  T: IntoIterator,
+  T::Item: Eq + Hash,
+{
+  let mut uniq = HashSet::new();
+  iter.into_iter().all(move |x| uniq.insert(x))
 }
 
 fn main() {
@@ -44,11 +56,23 @@ fn main() {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn test_all_unique() {
+    // Test if the first 50_000 items
+    // are unique
+    let d = (1..50_000)
+      .into_iter()
+      .map(|i| make_id(i))
+      .collect::<Vec<u64>>();
+    assert!(has_unique_elements(d));
+  }
+
   #[test]
   fn test_is_valid() {
-    assert_eq!(is_valid(5652), true);
-    assert_eq!(is_valid(5654), false);
-    assert_eq!(is_valid(5653), false);
-    assert_eq!(is_valid(5660), true);
+    assert_eq!(is_valid(56527), true);
+    assert_eq!(is_valid(56543), false);
+    assert_eq!(is_valid(56532), false);
+    assert_eq!(is_valid(56609), true);
   }
 }
