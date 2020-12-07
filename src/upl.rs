@@ -102,7 +102,7 @@ pub struct Upl {
   // Unique UPL ID
   // i32 for the better inter
   // service communication
-  id: id::UplId,
+  pub id: u32,
   // UPL Kind
   // Single or Bulk(u32)
   // Single means its a single UPL,
@@ -162,10 +162,45 @@ pub struct Upl {
   date_created: DateTime<Utc>,
 }
 
+impl Upl {
+  pub fn get_product_id(&self) -> u32 {
+    match self.kind {
+      Kind::Sku { product_id, sku: _ } => product_id,
+      Kind::BulkSku { product_id, sku: _ } => product_id,
+      Kind::OpenedSku {
+        product_id,
+        sku: _,
+        amount: _,
+      } => product_id,
+      Kind::DerivedProduct {
+        product_id,
+        derived_from: _,
+        amount: _,
+      } => product_id,
+    }
+  }
+  pub fn get_sku(&self) -> Option<u32> {
+    match self.kind {
+      Kind::Sku { product_id: _, sku } => Some(sku),
+      Kind::BulkSku { product_id: _, sku } => Some(sku),
+      Kind::OpenedSku {
+        product_id: _,
+        sku,
+        amount: _,
+      } => Some(sku),
+      Kind::DerivedProduct {
+        product_id: _,
+        derived_from: _,
+        amount: _,
+      } => None,
+    }
+  }
+}
+
 impl Default for Upl {
   fn default() -> Self {
     Self {
-      id: id::UplId::default(),
+      id: 0,
       kind: Kind::default(),
       procurement_id: 0,
       procurement_net_price: 0.0,

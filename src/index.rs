@@ -1,10 +1,17 @@
+use crate::upl::Upl;
+use chrono::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::{fs::create_dir_all, path::PathBuf};
 
-use crate::upl::Upl;
-
+#[derive(Debug)]
 pub enum IndexError {
   NotFound,
   WrongId,
+  FileReadError,
+  FileDeserializeError,
+  FileSerializeError,
+  AlreadyExist,
+  InternalError(String),
 }
 
 pub struct UplIndex {
@@ -21,12 +28,30 @@ fn get_path(u: u32) -> (u32, u32, u32) {
   (u / 1_000_000, u % 1_000_000 / 1000, u % 1000)
 }
 
-struct UIndex {
-  index_id: u32,
-  upl: u32,
-  product: u32,
-  sku: u32,
-  created_at_epoch_utc: u32, // unix epoch
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct UIndex {
+  // Base ID
+  pub base_id: u32,
+  // ID with checksum characters
+  pub upl: u32,
+  // Related product ID
+  pub product: u32,
+  // Related SKU ID
+  pub sku: Option<u32>,
+  // Created at
+  pub created_at_unix_ts_utc: i64, // unix epoch
+}
+
+impl UIndex {
+  pub fn new(base_id: u32, upl: u32, product: u32, sku: Option<u32>) -> Self {
+    Self {
+      base_id,
+      upl,
+      product,
+      sku,
+      created_at_unix_ts_utc: Utc::now().timestamp(),
+    }
+  }
 }
 
 impl UplIndex {
@@ -39,20 +64,113 @@ impl UplIndex {
     }
     Self { path }
   }
-  fn get(id: u32) -> Result<(), IndexError> {
-    // 1. Check ID checksum
+  fn get(&self, id: u32) -> Result<UIndex, IndexError> {
+    // 1. Check ID checksum (Validate it)
+    ();
     // 2. Get base ID
+    // This means we cut the last two characters
+    // This means divide by 100
+    let base = id / 100;
+    let (parent, child, _) = get_path(base);
+
+    let file_path = self
+      .path
+      .join(parent.to_string())
+      .join(child.to_string())
+      .join(format!("{}.uindex", id));
+
+    // If index file does not exist
+    // return error
+    if !file_path.exists() {
+      return Err(IndexError::NotFound);
+    }
+
     // 3. Try load index file
-    // 4. Return the index file or error
-    todo!("Implement UplIndex GET")
+    // Read file content into file_str
+    let file_str = std::fs::read_to_string(&file_path).map_err(|_| IndexError::FileReadError)?;
+
+    // 4. Try deserialize index file
+    //    and return the index file or error
+    Ok(serde_yaml::from_str::<UIndex>(&file_str).map_err(|_| IndexError::FileDeserializeError)?)
   }
-  fn add(upl: &Upl) -> Result<(), IndexError> {
+  fn add(&self, upl: &Upl) -> Result<(), IndexError> {
     // 1. Get base ID from UplId
-    // 2. Create index object from the given UPL
-    // 3. Calculate path from the base ID (1000 index files per folder max)
-    // 3. Create index file
-    // 4. Try serialize index object and try save it
+    let base = upl.id / 100;
+
+    // 2. Create index file path object
+    let (parent, child, _) = get_path(base);
+    let folder_path = self.path.join(parent.to_string()).join(child.to_string());
+    let file_path = folder_path.join(format!("{}.uindex", upl.id));
+
+    // 3. Check if the index file already exist
+    if file_path.exists() {
+      return Err(IndexError::AlreadyExist);
+    }
+
+    // 4. Check if folder path exist
+    //    and create it all if does not
+    if !folder_path.exists() {
+      std::fs::create_dir_all(&folder_path).map_err(|_| {
+        IndexError::InternalError(format!(
+          "A megadott path-t nem lehet létrehozni! {:?}",
+          &folder_path
+        ))
+      })?;
+    }
+
+    // 3. Create index object from the given UPL
+    let index_object = UIndex::new(base, upl.id, upl.get_product_id(), upl.get_sku());
+
+    // 4. Create index file
+    let mut index_file = std::fs::File::create(&file_path).map_err(|_| {
+      IndexError::InternalError(format!("Error while creating index file: {:?}", &file_path))
+    })?;
+
+    // 5. Try serialize index object and try save it
     //    into the index file
-    todo!("Implement UplIndex ADD")
+    serde_yaml::to_writer(&mut index_file, &index_object)
+      .map_err(|_| IndexError::FileSerializeError)?;
+
+    Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  use std::sync::Once;
+
+  static INIT: Once = Once::new();
+
+  fn clean() {
+    INIT.call_once(|| {
+      let path = PathBuf::from("data/test/index");
+      std::fs::remove_dir_all(path).expect("Failed to clean up test index directory");
+    });
+  }
+
+  #[test]
+  fn test_create() {
+    clean();
+    let mut upl = Upl::default();
+    upl.id = 101598512;
+
+    let index = UplIndex::init(PathBuf::from("data/test/index"));
+    assert_eq!(index.add(&upl).is_ok(), true);
+  }
+
+  #[test]
+  fn test_get() {
+    let id = 101598512;
+    let index = UplIndex::init(PathBuf::from("data/test/index"));
+    let i = index.get(id);
+    assert_eq!(i.is_ok(), true, "loaded file has success deser {}", id);
+    assert_eq!(
+      i.unwrap().upl,
+      id,
+      "deserialized index file has a wrong UPL {}",
+      id
+    );
   }
 }
