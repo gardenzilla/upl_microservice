@@ -29,7 +29,7 @@ fn get_path(u: u32) -> (u32, u32, u32) {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct UIndex {
+pub struct IndexObject {
   // Base ID
   pub base_id: u32,
   // ID with checksum characters
@@ -42,7 +42,7 @@ pub struct UIndex {
   pub created_at_unix_ts_utc: i64, // unix epoch
 }
 
-impl UIndex {
+impl IndexObject {
   pub fn new(base_id: u32, upl: u32, product: u32, sku: Option<u32>) -> Self {
     Self {
       base_id,
@@ -55,7 +55,7 @@ impl UIndex {
 }
 
 impl UplIndex {
-  fn init(path: PathBuf) -> Self {
+  pub fn init(path: PathBuf) -> Self {
     // 1. Check if path exist
     if !path.exists() {
       // 2. Create path if does not exist
@@ -64,7 +64,9 @@ impl UplIndex {
     }
     Self { path }
   }
-  fn get(&self, id: u32) -> Result<UIndex, IndexError> {
+
+  /// Get UPLIndex object
+  fn get(&self, id: u32) -> Result<IndexObject, IndexError> {
     // 1. Check ID checksum (Validate it)
     ();
     // 2. Get base ID
@@ -77,7 +79,7 @@ impl UplIndex {
       .path
       .join(parent.to_string())
       .join(child.to_string())
-      .join(format!("{}.uindex", id));
+      .join(format!("{}.IndexObject", id));
 
     // If index file does not exist
     // return error
@@ -91,8 +93,13 @@ impl UplIndex {
 
     // 4. Try deserialize index file
     //    and return the index file or error
-    Ok(serde_yaml::from_str::<UIndex>(&file_str).map_err(|_| IndexError::FileDeserializeError)?)
+    Ok(
+      serde_yaml::from_str::<IndexObject>(&file_str)
+        .map_err(|_| IndexError::FileDeserializeError)?,
+    )
   }
+
+  /// Add UPL as a UPL Index
   fn add(&self, upl: &Upl) -> Result<(), IndexError> {
     // 1. Get base ID from UplId
     let base = upl.id / 100;
@@ -100,7 +107,7 @@ impl UplIndex {
     // 2. Create index file path object
     let (parent, child, _) = get_path(base);
     let folder_path = self.path.join(parent.to_string()).join(child.to_string());
-    let file_path = folder_path.join(format!("{}.uindex", upl.id));
+    let file_path = folder_path.join(format!("{}.IndexObject", upl.id));
 
     // 3. Check if the index file already exist
     if file_path.exists() {
@@ -119,7 +126,7 @@ impl UplIndex {
     }
 
     // 3. Create index object from the given UPL
-    let index_object = UIndex::new(base, upl.id, upl.get_product_id(), upl.get_sku());
+    let index_object = IndexObject::new(base, upl.id, upl.get_product_id(), upl.get_sku());
 
     // 4. Create index file
     let mut index_file = std::fs::File::create(&file_path).map_err(|_| {

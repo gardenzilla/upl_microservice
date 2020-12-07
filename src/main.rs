@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use futures::lock::Mutex;
 use packman::*;
 use reservation::Reservation;
 use serde::Serialize;
@@ -29,22 +30,28 @@ impl UplStore {
 }
 
 struct UplService {
-  // Create | Get
-  index: (),
+  // Add | Get
+  // Implemented under Mutex, so there is no FS race condition
+  index: Mutex<index::UplIndex>,
   // AddReservation | AddUpl | Increase | Descrease | ClearCart
-  reservation: Pack<Vec<Reservation>>,
+  reservation: Mutex<Pack<Vec<Reservation>>>,
   // Create | Move | ..
-  store: UplStore,
+  store: Mutex<UplStore>,
   // New | Restore | Get
   archive: (),
 }
 
 impl UplService {
-  fn init(index: (), reservation: Pack<Vec<Reservation>>, store: UplStore, archive: ()) -> Self {
+  fn init(
+    index: index::UplIndex,
+    reservation: Pack<Vec<Reservation>>,
+    store: UplStore,
+    archive: (),
+  ) -> Self {
     Self {
-      index,
-      reservation,
-      store,
+      index: Mutex::new(index),
+      reservation: Mutex::new(reservation),
+      store: Mutex::new(store),
       archive,
     }
   }
@@ -52,7 +59,7 @@ impl UplService {
 
 fn main() {
   // Init UPL Index
-  let upl_index = ();
+  let upl_index = index::UplIndex::init(PathBuf::from("data/upl_index"));
 
   // Init Reservation DB
   let reservation: Pack<Vec<Reservation>> =
