@@ -378,7 +378,45 @@ impl UplMethods for Upl {
   }
 
   fn can_move(&self, to: &Location) -> bool {
-    todo!()
+    match to {
+      Location::Stock(_) => match self.lock {
+        // Despite of price lock it can be moved to stock
+        Lock::Price(_) => true,
+        Lock::Cart(_) => false,
+        Lock::Delivery(_) => false,
+        Lock::Inventory(_) => false,
+        // Or if it has no lock at all
+        Lock::None => true,
+      },
+      Location::Delivery(id) => match self.lock {
+        // Despite of price lock it can be delivered
+        Lock::Price(_) => true,
+        Lock::Cart(_) => false,
+        // If it has already a delivery lock,
+        // then only if it has its own delivery lock
+        Lock::Delivery(_id) => *id == _id,
+        Lock::Inventory(_) => false,
+        // Or if it has no lock at all
+        Lock::None => true,
+      },
+      Location::Cart(id) => match self.lock {
+        Lock::Price(_) => false,
+        // Only if it has its own cart lock
+        Lock::Cart(_id) => *id == _id,
+        Lock::Delivery(_) => false,
+        Lock::Inventory(_) => false,
+        // Or if it has no lock at all
+        Lock::None => true,
+      },
+      Location::Discard(id) => match self.lock {
+        Lock::Price(_) => false,
+        Lock::Cart(_) => false,
+        Lock::Delivery(_) => false,
+        // Only inventory locked UPL can be moved to Discard
+        Lock::Inventory(_) => true,
+        Lock::None => false,
+      },
+    }
   }
 
   fn get_location(&self) -> &Location {
@@ -386,6 +424,7 @@ impl UplMethods for Upl {
   }
 
   fn move_upl(&mut self, from: Location, to: Location) -> Result<&Self, String> {
+    // Should clear lock after move
     todo!()
   }
 
