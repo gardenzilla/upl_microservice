@@ -11,7 +11,7 @@ pub trait UplMethods {
   /// by the given details
   /// Should be used only by the procurement service
   /// ID Should be validated
-  fn new() -> Upl;
+  fn new() -> Self;
   /// Get UPL ID ref
   fn get_id(&self) -> &u32;
   /// Get UPL Kind ref
@@ -26,15 +26,15 @@ pub trait UplMethods {
   /// Get current location ref
   fn get_location(&self) -> &Location;
   /// Try move UPL from location A to location B
-  fn move_upl(&mut self, from: Location, to: Location) -> Result<(), String>;
+  fn move_upl(&mut self, from: Location, to: Location) -> Result<&Self, String>;
   /// Check whether UPL has a lock or none
   fn has_lock(&self) -> bool;
   /// Get UPL lock ref
   fn get_lock(&self) -> &Lock;
   /// Try to lock UPL by a given Lock
-  fn lock(&mut self, lock: Lock) -> Result<(), String>;
+  fn lock(&mut self, lock: Lock) -> Result<&Self, String>;
   /// Try to unlock UPL
-  fn unlock(&mut self) -> Result<(), String>;
+  fn unlock(&mut self) -> Result<&Self, String>;
   /// Check if the UPL is depreciated
   /// This can mean a damaged package, or anything the might
   /// lower the UPL value, but it can still be sold.
@@ -50,7 +50,7 @@ pub trait UplMethods {
   /// Update UPL best_before date
   /// for any reason
   /// Should be private and used only from the inventory service
-  fn update_best_before(&mut self, best_before: Option<NaiveDate>) -> &Upl;
+  fn update_best_before(&mut self, best_before: Option<NaiveDate>) -> &Self;
   /// Check whether the UPL is an un-opened original one or not
   fn is_original(&self) -> bool;
   /// Check if its a bulk UPL
@@ -95,7 +95,7 @@ pub trait UplMethods {
   /// Get UPL history
   fn get_history(&self) -> &Vec<UplHistoryItem>;
   /// Set UPL history event
-  fn set_history(&mut self, event: UplHistoryItem) -> &Upl;
+  fn set_history(&mut self, event: UplHistoryItem) -> &Self;
   /// Get UPL object creation time
   fn get_created_at(&self) -> DateTime<Utc>;
   /// Get UPL object created by value (user id)
@@ -357,7 +357,7 @@ pub struct Upl {
 }
 
 impl UplMethods for Upl {
-  fn new() -> Upl {
+  fn new() -> Self {
     todo!()
   }
 
@@ -385,7 +385,7 @@ impl UplMethods for Upl {
     &self.location
   }
 
-  fn move_upl(&mut self, from: Location, to: Location) -> Result<(), String> {
+  fn move_upl(&mut self, from: Location, to: Location) -> Result<&Self, String> {
     todo!()
   }
 
@@ -400,13 +400,14 @@ impl UplMethods for Upl {
     &self.lock
   }
 
-  fn lock(&mut self, lock: Lock) -> Result<(), String> {
+  fn lock(&mut self, lock: Lock) -> Result<&Self, String> {
     self.lock = lock;
-    todo!()
+    Ok(&self)
   }
 
-  fn unlock(&mut self) -> Result<(), String> {
-    todo!()
+  fn unlock(&mut self) -> Result<&Self, String> {
+    self.lock = Lock::None;
+    Ok(&self)
   }
 
   fn is_depreciated(&self) -> bool {
@@ -661,7 +662,7 @@ impl UplMethods for Upl {
     &self.history
   }
 
-  fn set_history(&mut self, event: UplHistoryItem) -> &Upl {
+  fn set_history(&mut self, event: UplHistoryItem) -> &Self {
     self.history.push(event);
     &self
   }
@@ -671,7 +672,7 @@ impl UplMethods for Upl {
   }
 
   fn get_created_by(&self) -> &str {
-    self.created_by
+    &self.created_by
   }
 }
 
