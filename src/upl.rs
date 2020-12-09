@@ -5,11 +5,85 @@ use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub trait _Upl {
-  fn get_piece(&self) -> u32; // Should be a better name
-  fn lock(&mut self, cart_id: u32) -> Result<(), String>;
-  fn unlock(&mut self, cart_id: u32) -> Result<(), String>;
-  fn move_upl(&mut self, from: u32, to: u32, upl_id: u32) -> Result<(), String>;
+/// UPL method declarations
+pub trait UplMethods {
+  /// Create a new UPL Object
+  /// by the given details
+  /// Should be used only by the procurement service
+  fn new() -> Upl;
+  /// Get UPL ID ref
+  fn get_id(&self) -> &u32;
+  /// Get UPL Kind ref
+  fn get_kind(&self) -> &Kind;
+  /// Get UPL procurement ID ref
+  fn get_procurement_id(&self) -> &u32;
+  /// Get UPL procurement net price ref
+  fn get_procurement_net_price(&self) -> &u32;
+  /// Check whether UPL can move to a different location
+  /// depends on its acquired Lock kind
+  fn can_move(&self) -> bool;
+  /// Get current location ref
+  fn get_location(&self) -> &Location;
+  /// Try move UPL from location A to location B
+  fn move_upl(&mut self, from: Location, to: Location) -> Result<(), String>;
+  /// Check whether UPL has a lock or none
+  fn has_lock(&self) -> bool;
+  /// Get UPL lock ref
+  fn get_lock(&self) -> &Lock;
+  /// Try to lock UPL by a given Lock
+  fn lock(&mut self, lock: Lock) -> Result<(), String>;
+  /// Try to unlock UPL
+  fn unlock(&mut self) -> Result<(), String>;
+  /// Check if the UPL is depreciated
+  /// This can mean a damaged package, or anything the might
+  /// lower the UPL value, but it can still be sold.
+  fn is_depreciated(&self) -> bool;
+  /// Get depreciation ID if there is any
+  fn get_depreciation_id(&self) -> Option<i32>;
+  /// Get depreciation comment if there is any
+  fn get_depreciation_comment(&self) -> Option<&String>;
+  /// Get depreciation price if there is any
+  fn get_depreciation_price(&self) -> Option<u32>;
+  /// Get best before date if there is any
+  fn get_best_before(&self) -> Option<NaiveDate>;
+  /// Check whether the UPL is an un-opened original one or not
+  fn is_original(&self) -> bool;
+  /// Check if its a bulk UPL
+  fn is_bulk(&self) -> bool;
+  /// Returns how many UPLs are packed inside this UPL
+  /// As default its always 1
+  /// but when a UPL is a bulk UPL, then multiple UPLs are
+  /// packed into one bulk package
+  fn get_upl_piece(&self) -> u32;
+  /// Split one UPL from the bulk ones
+  /// ----------
+  /// IMPORTANT!
+  /// ----------
+  /// in a higher lever you must save the split UPL in the UPL store
+  fn split(&mut self, new_upl_id: u32) -> Result<Upl, ()>;
+  /// Split multiple UPLs from the bulk ones
+  /// ----------
+  /// IMPORTANT!
+  /// ----------
+  /// in a higher lever you must save the split UPL in the UPL store
+  fn split_bulk(&mut self, new_upl_ids: Vec<u32>) -> Result<Vec<Upl>, ()>;
+  /// Divide a divisible UPL into two UPLs
+  /// If the UPL is a divisible Sku, then it will become an OpenedSku
+  /// and the resulted new Upl will be a DerivedProduct
+  /// ----------
+  /// IMPORTANT!
+  /// ----------
+  /// in a higher lever you must save the split UPL in the UPL store
+  fn divide(&mut self, new_upl_id: u32, requested_amount: u32) -> Result<Upl, ()>;
+  /// Check whether this UPL is divisible or not
+  fn is_divisible(&self) -> bool;
+  /// If the UPL is divisible,
+  /// returns the remaining amount that can be divide
+  fn get_divisible_amount(&self) -> Option<u32>;
+  /// Get UPL object creation time
+  fn get_created_at(&self) -> DateTime<Utc>;
+  /// Get UPL object created by value (user id)
+  fn get_created_by(&self) -> String;
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -143,7 +217,7 @@ pub struct Upl {
   pub procurement_id: u32,
   // Net wholesale price in which
   // this item was purchased by us
-  pub procurement_net_price: f32,
+  pub procurement_net_price: u32,
   // Current UPL location
   pub location: Location, // todo? this way?
   // todo! Not NOW!
@@ -152,30 +226,30 @@ pub struct Upl {
   // If the product is injured
   // it should be scraped. This field
   // contains the related scrap id
-  pub scrap_id: Option<i32>, // TODO: scrap_price_log?
+  pub deprecation_id: Option<i32>, // TODO: scrap_price_log?
   // Related scrap comment
   // if there any
   // From the sku scrap comment from the
   // related scrap record
-  pub scrap_comment: Option<String>,
+  pub deprecation_comment: Option<String>,
   // Related scrap price
   // if there any.
   // Can set if there is related scrap_id
-  pub scrap_retail_net_price: Option<f32>,
+  pub depreciation_retail_net_price: Option<u32>,
   // Best before date
   // Only for perishable goods.
   // Optional, but when we have one, we use
-  // DateTime<Utc>
-  pub best_before: Option<DateTime<Utc>>,
+  // NaiveDate
+  pub best_before: Option<NaiveDate>,
   // Product quantity
   // It contains Simple or Complex quantity
-  // Or when a Simple product - wich is divisible -
+  // Or when a Simple product - which is divisible -
   // is divided, it contains the remained quantity.
   // Inherited from Product(service), but after
-  // bacome Partial(u32), it's going to be managed
+  // become Partial(u32), it's going to be managed
   // here without responding the related Product changes.
   // --
-  // Only some, if Sku can be devided, and its unopened.
+  // Only some, if Sku can be divided, and its unopened.
   // Once its opened, this amount will be none, and its
   // value is moved to its kind component
   // This value represents the SKU original divisible quantity
@@ -233,11 +307,11 @@ impl Default for Upl {
       id: 0,
       kind: Kind::default(),
       procurement_id: 0,
-      procurement_net_price: 0.0,
+      procurement_net_price: 0,
       location: Location::default(),
-      scrap_id: None,
-      scrap_comment: None,
-      scrap_retail_net_price: None,
+      deprecation_id: None,
+      deprecation_comment: None,
+      depreciation_retail_net_price: None,
       best_before: None,
       divisible_amount: None,
       lock: Lock::default(),
