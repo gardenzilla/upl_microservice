@@ -21,7 +21,7 @@ pub trait UplMethods {
   fn get_procurement_net_price(&self) -> &u32;
   /// Check whether UPL can move to a different location
   /// depends on its acquired Lock kind
-  fn can_move(&self) -> bool;
+  fn can_move(&self, to: &Location) -> bool;
   /// Get current location ref
   fn get_location(&self) -> &Location;
   /// Try move UPL from location A to location B
@@ -46,6 +46,10 @@ pub trait UplMethods {
   fn get_depreciation_price(&self) -> Option<u32>;
   /// Get best before date if there is any
   fn get_best_before(&self) -> Option<NaiveDate>;
+  /// Update UPL best_before date
+  /// for any reason
+  /// Should be private and used only from the inventory service
+  fn update_best_before(&mut self, best_before: NaiveDate) -> &Upl;
   /// Check whether the UPL is an un-opened original one or not
   fn is_original(&self) -> bool;
   /// Check if its a bulk UPL
@@ -75,15 +79,82 @@ pub trait UplMethods {
   /// ----------
   /// in a higher lever you must save the split UPL in the UPL store
   fn divide(&mut self, new_upl_id: u32, requested_amount: u32) -> Result<Upl, ()>;
+  /// Try to merge a source and a derived UPL into together
+  /// When for any reason we want to put back a derived UPL into
+  /// its ancestor
+  fn merge(&mut self, upl: Upl) -> Result<&Upl, ()>;
   /// Check whether this UPL is divisible or not
   fn is_divisible(&self) -> bool;
   /// If the UPL is divisible,
   /// returns the remaining amount that can be divide
   fn get_divisible_amount(&self) -> Option<u32>;
+  /// Get UPL history
+  fn get_history(&self) -> &Vec<UplHistoryEvent>;
+  /// Set UPL history event
+  fn set_history(&mut self, event: UplHistoryEvent) -> &Upl;
   /// Get UPL object creation time
   fn get_created_at(&self) -> DateTime<Utc>;
   /// Get UPL object created by value (user id)
   fn get_created_by(&self) -> String;
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UplHistoryItem {
+  event: UplHistoryEvent,
+  created_at: DateTime<Utc>,
+  created_by: String,
+}
+
+impl Default for UplHistoryItem {
+  fn default() -> Self {
+    Self {
+      event: UplHistoryEvent::default(),
+      created_at: Utc::now(),
+      created_by: "".to_string(),
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum UplHistoryEvent {
+  // When UPL is created
+  Created {
+    by: String,
+  },
+  // When UPL is archived
+  Archived,
+  // When UPL is moved to a new location
+  Moved {
+    from: Location,
+    to: Location,
+  },
+  // When best_before updated
+  BestBeforeUpdated {
+    to: NaiveDate,
+  },
+  // When UPL is locked
+  Locked {
+    to: Lock,
+  },
+  // When UPL is unlocked
+  Unlocked,
+  // When UPL is set as deprecated
+  SetDeprecated {
+    id: Option<i32>,
+    comment: Option<String>,
+  },
+  // When UPL has set a special deprecation retail price
+  SetDeprecatedPrice {
+    retail_net_price: Option<u32>,
+  },
+  // Default event
+  None,
+}
+
+impl Default for UplHistoryEvent {
+  fn default() -> Self {
+    Self::None
+  }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -138,6 +209,8 @@ pub enum Kind {
     product_id: u32,
     sku: u32,
     amount: u32,
+    // Derived UPLs
+    successors: Vec<u32>,
   },
   // Piece of product that
   // derives from an opened sku
@@ -226,7 +299,7 @@ pub struct Upl {
   // If the product is injured
   // it should be scraped. This field
   // contains the related scrap id
-  pub deprecation_id: Option<i32>, // TODO: scrap_price_log?
+  pub deprecation_id: Option<i32>,
   // Related scrap comment
   // if there any
   // From the sku scrap comment from the
@@ -259,11 +332,9 @@ pub struct Upl {
   // that UPL cannot be updated.
   // ~ Only ~ the lock owner can unlock
   pub lock: Lock,
-  // Userid who created
-  pub created_by: String,
-  // Utc datetime when this object
-  // created
-  pub date_created: DateTime<Utc>,
+  // UPL event history
+  // We store all the major UPL event here
+  pub history: Vec<UplHistoryItem>,
 }
 
 impl Upl {
