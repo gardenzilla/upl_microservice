@@ -1,5 +1,9 @@
 {
   "licenser.license": "GPLv2",
   "licenser.projectName": "Gardenzilla",
-  "licenser.author": "Peter Mezei"
+  "licenser.author": "Peter Mezei",
+  "cSpell.words": [
+    "UPLs",
+    "uarch"
+  ]
 }

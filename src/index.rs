@@ -68,6 +68,7 @@ impl UplIndex {
   /// Get UPLIndex object
   fn get(&self, id: u32) -> Result<IndexObject, IndexError> {
     // 1. Check ID checksum (Validate it)
+    // todo! Implement ID checksum validation or do we have it before?
     ();
     // 2. Get base ID
     // This means we cut the last two characters

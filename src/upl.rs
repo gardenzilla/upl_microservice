@@ -14,8 +14,15 @@ pub trait _Upl {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Location {
+  // Upl is in stock
   Stock(u32),
+  // Upl is in a delivery
+  Delivery(u32),
+  // Upl is in a cart (closed purchase)
   Cart(u32),
+  // Upl is missing and was moved to be discarded
+  // but if its re-found
+  Discard(u32),
 }
 
 impl Default for Location {
@@ -81,12 +88,35 @@ impl Default for Kind {
 }
 
 /// Lock kinds
-/// Cart lock means the given UPL is locked to a specific Cart
-/// so it cannot move away, as its under a sales process.
 /// None means there is no lock, so the UPL can be moved away.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Lock {
+  // Apply Price lock when new UPLs arrive from
+  // Procurement and their prices need to be check
+  // Pricing service must check this UPLs (PriceLock, SKU)
+  // and create a re-pricing task or doesn't. When the new UPLs
+  // pricing are okay, or the pricing task is done, pricing module
+  // can unlock this procurement lock.
+  Price(u32),
+  // Cart lock means the given UPL is locked to a specific Cart
+  // so it cannot move away, as its under a sales process.
+  // Using when a UPL is in a Cart
   Cart(u32),
+  // Apply Delivery Lock when the UPL is going to
+  // be selected to a delivery between stocks.
+  Delivery(u32),
+  // Using when UPL is under an inventory process
+  // and/or missing. We can set an Inventory lock to UPLs
+  // that cannot be the part of the sales process due to
+  // inventory/quality issues, and further decision is needed.
+  // Or we can use inventory lock as a general lock for UPLs
+  // that are a part of an inventory check process, and we don't want
+  // the sales process to disturb that check process. And we don't want
+  // the inventory process to cause delay in sales process. This means
+  // inventory process must be very quick.
+  Inventory(u32),
+  // UPL has no lock
+  // it can be updated and moved freely
   None,
 }
 
@@ -95,12 +125,6 @@ impl Default for Lock {
   fn default() -> Self {
     Self::None
   }
-}
-
-pub enum Status {
-  Available,
-  Sold,
-  Scapped,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -114,35 +138,35 @@ pub struct Upl {
   // Single means its a single UPL,
   // Bulk means its a collection of UPLs under a single UPL ID
   // e.g. a pallet flower soil (50)
-  kind: Kind,
+  pub kind: Kind,
   // * Procurement
-  procurement_id: u32,
+  pub procurement_id: u32,
   // Net wholesale price in which
   // this item was purchased by us
-  procurement_net_price: f32,
+  pub procurement_net_price: f32,
   // Current UPL location
-  location: Location, // todo? this way?
+  pub location: Location, // todo? this way?
   // todo! Not NOW!
   // todo! Implement => location_history: Vec<Location>,
   // --
   // If the product is injured
   // it should be scraped. This field
   // contains the related scrap id
-  scrap_id: Option<i32>, // TODO: scrap_price_log?
+  pub scrap_id: Option<i32>, // TODO: scrap_price_log?
   // Related scrap comment
   // if there any
   // From the sku scrap comment from the
   // related scrap record
-  scrap_comment: Option<String>,
+  pub scrap_comment: Option<String>,
   // Related scrap price
   // if there any.
   // Can set if there is related scrap_id
-  scrap_retail_net_price: Option<f32>,
+  pub scrap_retail_net_price: Option<f32>,
   // Best before date
   // Only for perishable goods.
   // Optional, but when we have one, we use
   // DateTime<Utc>
-  best_before: Option<DateTime<Utc>>,
+  pub best_before: Option<DateTime<Utc>>,
   // Product quantity
   // It contains Simple or Complex quantity
   // Or when a Simple product - wich is divisible -
@@ -155,17 +179,17 @@ pub struct Upl {
   // Once its opened, this amount will be none, and its
   // value is moved to its kind component
   // This value represents the SKU original divisible quantity
-  divisible_amount: Option<u32>,
+  pub divisible_amount: Option<u32>,
   // Lock enum
   // When a UPL is locked by any reason,
   // that UPL cannot be updated.
   // ~ Only ~ the lock owner can unlock
-  lock: Lock,
+  pub lock: Lock,
   // Userid who created
-  created_by: String,
+  pub created_by: String,
   // Utc datetime when this object
   // created
-  date_created: DateTime<Utc>,
+  pub date_created: DateTime<Utc>,
 }
 
 impl Upl {
