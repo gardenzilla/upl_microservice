@@ -62,12 +62,23 @@ where
   fn lock(&mut self, lock: Lock) -> Result<&Self, String>;
   /// Try to unlock UPL
   fn unlock(&mut self) -> &Self;
+  /// Set depreciation
+  /// Should be limited to the inventory service
+  fn set_depreciation(
+    &mut self,
+    id: u32,
+    comment: Option<String>,
+    by: String,
+  ) -> Result<&Self, String>;
+  /// Remove depreciation
+  /// Should be limited to the inventory service
+  fn remove_depreciation(&mut self, by: String) -> &Self;
   /// Check if the UPL is depreciated
   /// This can mean a damaged package, or anything the might
   /// lower the UPL value, but it can still be sold.
   fn is_depreciated(&self) -> bool;
   /// Get depreciation ID if there is any
-  fn get_depreciation_id(&self) -> Option<&i32>;
+  fn get_depreciation_id(&self) -> Option<&u32>;
   /// Get depreciation comment if there is any
   fn get_depreciation_comment(&self) -> Option<&String>;
   /// Get depreciation price if there is any
@@ -177,29 +188,19 @@ pub enum UplHistoryEvent {
   // When UPL is archived
   Archived,
   // When UPL is moved to a new location
-  Moved {
-    from: Location,
-    to: Location,
-  },
+  Moved { from: Location, to: Location },
   // When best_before updated
-  BestBeforeUpdated {
-    to: NaiveDate,
-  },
+  BestBeforeUpdated { to: NaiveDate },
   // When UPL is locked
-  Locked {
-    to: Lock,
-  },
+  Locked { to: Lock },
   // When UPL is unlocked
   Unlocked,
   // When UPL is set as deprecated
-  SetDeprecated {
-    id: Option<i32>,
-    comment: Option<String>,
-  },
+  SetDeprecated { id: u32, comment: Option<String> },
   // When UPL has set a special deprecation retail price
-  SetDeprecatedPrice {
-    retail_net_price: Option<u32>,
-  },
+  SetDeprecatedPrice { retail_net_price: Option<u32> },
+  // Remove depreciation
+  RemoveDeprecation,
   // Default event
   None,
 }
@@ -354,7 +355,7 @@ pub struct Upl {
   // If the product is injured
   // it should be depreciated. This field
   // contains the related depreciation id
-  pub depreciation_id: Option<i32>,
+  pub depreciation_id: Option<u32>,
   // Related depreciation comment
   // if there any
   // From the sku scrap comment from the
@@ -577,6 +578,51 @@ impl UplMethods for Upl {
   fn unlock(&mut self) -> &Self {
     // Just release the lock
     self.lock = Lock::None;
+    // Set UPL history
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::Technical,
+      UplHistoryEvent::Unlocked,
+    ));
+    // Return self ref
+    &self
+  }
+
+  fn set_depreciation(
+    &mut self,
+    id: u32,
+    comment: Option<String>,
+    by: String,
+  ) -> Result<&Self, String> {
+    // Check whether already depreciated
+    if self.is_depreciated() {
+      return Err("Already depreciated!".into());
+    }
+    // Set ID
+    self.depreciation_id = Some(id);
+    // Set comment
+    self.depreciation_comment = comment.clone();
+    // Set UPL history
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::User(by),
+      UplHistoryEvent::SetDeprecated { id, comment },
+    ));
+    // Return Ok self ref
+    Ok(&self)
+  }
+
+  fn remove_depreciation(&mut self, by: String) -> &Self {
+    // Clear ID
+    self.depreciation_id = None;
+    // Clear COMMENT
+    self.depreciation_comment = None;
+    // Clear depreciated NET RETAIL PRICE
+    self.depreciation_retail_net_price = None;
+    // Set UPL history
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::User(by),
+      UplHistoryEvent::RemoveDeprecation,
+    ));
+    // Return self ref
     &self
   }
 
@@ -584,7 +630,7 @@ impl UplMethods for Upl {
     self.depreciation_id.is_some()
   }
 
-  fn get_depreciation_id(&self) -> Option<&i32> {
+  fn get_depreciation_id(&self) -> Option<&u32> {
     self.depreciation_id.as_ref()
   }
 
