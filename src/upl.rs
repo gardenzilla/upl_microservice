@@ -23,6 +23,16 @@ pub trait UplMethods {
   /// Check whether UPL can move to a different location
   /// depends on its acquired Lock kind
   fn can_move(&self, to: &Location) -> bool;
+  // Returns true if
+  //  - has UnOpened box -> so Kind::Sku or Kind::BulkSku,
+  //  - has NO LOCK,
+  //  -
+  fn is_available(&self) -> bool;
+  // Returns true if a UPL has original package
+  // un-opened and healthy:
+  //  - no depreciation
+  //  - no best_before issue
+  fn is_available_healthy(&self) -> bool;
   /// Get current location ref
   fn get_location(&self) -> &Location;
   /// Try move UPL from location A to location B
@@ -253,13 +263,6 @@ impl Default for Kind {
 /// None means there is no lock, so the UPL can be moved away.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Lock {
-  // Apply Price lock when new UPLs arrive from
-  // Procurement and their prices need to be check
-  // Pricing service must check this UPLs (PriceLock, SKU)
-  // and create a re-pricing task or doesn't. When the new UPLs
-  // pricing are okay, or the pricing task is done, pricing module
-  // can unlock this procurement lock.
-  Price(u32),
   // Cart lock means the given UPL is locked to a specific Cart
   // so it cannot move away, as its under a sales process.
   // Using when a UPL is in a Cart
@@ -312,17 +315,17 @@ pub struct Upl {
   // todo! Implement => location_history: Vec<Location>,
   // --
   // If the product is injured
-  // it should be scraped. This field
-  // contains the related scrap id
-  pub deprecation_id: Option<i32>,
-  // Related scrap comment
+  // it should be depreciated. This field
+  // contains the related depreciation id
+  pub depreciation_id: Option<i32>,
+  // Related depreciation comment
   // if there any
   // From the sku scrap comment from the
-  // related scrap record
-  pub deprecation_comment: Option<String>,
+  // related depreciation record
+  pub depreciation_comment: Option<String>,
   // Related scrap price
   // if there any.
-  // Can set if there is related scrap_id
+  // Can set if there is related depreciation_id
   pub depreciation_retail_net_price: Option<u32>,
   // Best before date
   // Only for perishable goods.
@@ -380,8 +383,6 @@ impl UplMethods for Upl {
   fn can_move(&self, to: &Location) -> bool {
     match to {
       Location::Stock(_) => match self.lock {
-        // Despite of price lock it can be moved to stock
-        Lock::Price(_) => true,
         Lock::Cart(_) => false,
         Lock::Delivery(_) => false,
         Lock::Inventory(_) => false,
@@ -389,8 +390,6 @@ impl UplMethods for Upl {
         Lock::None => true,
       },
       Location::Delivery(id) => match self.lock {
-        // Despite of price lock it can be delivered
-        Lock::Price(_) => true,
         Lock::Cart(_) => false,
         // If it has already a delivery lock,
         // then only if it has its own delivery lock
@@ -400,7 +399,6 @@ impl UplMethods for Upl {
         Lock::None => true,
       },
       Location::Cart(id) => match self.lock {
-        Lock::Price(_) => false,
         // Only if it has its own cart lock
         Lock::Cart(_id) => *id == _id,
         Lock::Delivery(_) => false,
@@ -409,7 +407,6 @@ impl UplMethods for Upl {
         Lock::None => true,
       },
       Location::Discard(id) => match self.lock {
-        Lock::Price(_) => false,
         Lock::Cart(_) => false,
         Lock::Delivery(_) => false,
         // Only inventory locked UPL can be moved to Discard
@@ -450,15 +447,15 @@ impl UplMethods for Upl {
   }
 
   fn is_depreciated(&self) -> bool {
-    self.deprecation_id.is_some()
+    self.depreciation_id.is_some()
   }
 
   fn get_depreciation_id(&self) -> Option<&i32> {
-    self.deprecation_id.as_ref()
+    self.depreciation_id.as_ref()
   }
 
   fn get_depreciation_comment(&self) -> Option<&String> {
-    self.deprecation_comment.as_ref()
+    self.depreciation_comment.as_ref()
   }
 
   fn get_depreciation_price(&self) -> Option<&u32> {
@@ -712,6 +709,38 @@ impl UplMethods for Upl {
 
   fn get_created_by(&self) -> &str {
     &self.created_by
+  }
+
+  fn is_available(&self) -> bool {
+    // 1. Check has no lock
+    //    Otherwise we return true even if
+    //      - It has a broken backage
+    !self.has_lock()
+  }
+
+  fn is_available_healthy(&self) -> bool {
+    // 1. Check has no lock
+    !self.has_lock()
+    // 2. Check if it's not depreciated
+    && self.get_depreciation_id().is_none()
+    // 3. Check Kind::Sku || Kind::BulkSku
+    && (match self.kind {
+      Kind::Sku {
+        product_id: _,
+        sku: _,
+      } => true,
+      Kind::BulkSku {
+        product_id: _,
+        sku: _,
+        upl_pieces: _,
+      } => true,
+      _ => false,
+    })
+    // 4. Check has best before and if its still valid
+    && (match self.best_before {
+      Some(best_before) => best_before <= Utc::today().naive_utc(),
+      None => true,
+    })
   }
 }
 
