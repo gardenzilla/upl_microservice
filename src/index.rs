@@ -1,4 +1,4 @@
-use crate::upl::Upl;
+use crate::upl::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fs::create_dir_all, path::PathBuf};
@@ -127,7 +127,8 @@ impl UplIndex {
     }
 
     // 3. Create index object from the given UPL
-    let index_object = IndexObject::new(base, upl.id, upl.get_product_id(), upl.get_sku());
+    let index_object =
+      IndexObject::new(base, upl.id, *upl.get_product_id(), upl.get_sku().cloned());
 
     // 4. Create index file
     let mut index_file = std::fs::File::create(&file_path).map_err(|_| {
