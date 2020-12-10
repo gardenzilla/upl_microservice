@@ -73,6 +73,11 @@ where
   /// Remove depreciation
   /// Should be limited to the inventory service
   fn remove_depreciation(&mut self, by: String) -> &Self;
+  /// Set depreciation price
+  /// there is room for validation if needed
+  fn set_depreciation_price(&mut self, net_retail_price: u32, by: String) -> Result<&Self, String>;
+  /// Remove depreciation price
+  fn remove_depreciation_price(&mut self, by: String) -> &Self;
   /// Check if the UPL is depreciated
   /// This can mean a damaged package, or anything the might
   /// lower the UPL value, but it can still be sold.
@@ -88,7 +93,7 @@ where
   /// Update UPL best_before date
   /// for any reason
   /// Should be private and used only from the inventory service
-  fn update_best_before(&mut self, best_before: Option<NaiveDate>) -> &Self;
+  fn update_best_before(&mut self, to: Option<NaiveDate>, by: String) -> &Self;
   /// Check whether the UPL is an un-opened original one or not
   fn is_original(&self) -> bool;
   /// Check if its a bulk UPL
@@ -104,14 +109,14 @@ where
   /// ----------
   /// in a higher lever you must save the split UPL in the UPL store
   /// ID must be validated
-  fn split(&mut self, new_upl_id: u32) -> Result<Upl, ()>;
+  fn split(&mut self, new_upl_id: u32, by: String) -> Result<Upl, ()>;
   /// Split multiple UPLs from the bulk ones
   /// ----------
   /// IMPORTANT!
   /// ----------
   /// in a higher lever you must save the split UPL in the UPL store
   /// IDs must be validated
-  fn split_bulk(&mut self, new_upl_ids: Vec<u32>) -> Result<Vec<Upl>, ()>;
+  fn split_bulk(&mut self, new_upl_ids: Vec<u32>, by: String) -> Result<Vec<Upl>, ()>;
   /// Divide a divisible UPL into two UPLs
   /// If the UPL is a divisible Sku, then it will become an OpenedSku
   /// and the resulted new Upl will be a DerivedProduct
@@ -120,11 +125,11 @@ where
   /// ----------
   /// in a higher lever you must save the split UPL in the UPL store
   /// ID must be validated
-  fn divide(&mut self, new_upl_id: u32, requested_amount: u32) -> Result<Upl, ()>;
+  fn divide(&mut self, new_upl_id: u32, requested_amount: u32, by: String) -> Result<Upl, String>;
   /// Try to merge a source and a derived UPL into together
   /// When for any reason we want to put back a derived UPL into
   /// its ancestor
-  fn merge(&mut self, upl: Upl) -> Result<&Upl, ()>;
+  fn merge(&mut self, upl: Upl, by: String) -> Result<&Upl, String>;
   /// Check whether this UPL is divisible or not
   fn is_divisible(&self) -> bool;
   /// If the UPL is divisible,
@@ -188,19 +193,42 @@ pub enum UplHistoryEvent {
   // When UPL is archived
   Archived,
   // When UPL is moved to a new location
-  Moved { from: Location, to: Location },
+  Moved {
+    from: Location,
+    to: Location,
+  },
   // When best_before updated
-  BestBeforeUpdated { to: NaiveDate },
+  BestBeforeUpdated {
+    to: Option<NaiveDate>,
+  },
   // When UPL is locked
-  Locked { to: Lock },
+  Locked {
+    to: Lock,
+  },
   // When UPL is unlocked
   Unlocked,
   // When UPL is set as deprecated
-  SetDeprecated { id: u32, comment: Option<String> },
+  SetDeprecated {
+    id: u32,
+    comment: Option<String>,
+  },
   // When UPL has set a special deprecation retail price
-  SetDeprecatedPrice { retail_net_price: Option<u32> },
+  SetDeprecatedPrice {
+    retail_net_price: u32,
+  },
   // Remove depreciation
   RemoveDeprecation,
+  // Remove depreciation price
+  RemoveDepreciationPrice,
+  // When UPL is split
+  Split {
+    new_upl_id: u32,
+  },
+  // When a divisible UPL has divided into a smaller part
+  Divided {
+    new_upl_id: u32,
+    requested_amount: u32,
+  },
   // Default event
   None,
 }
@@ -626,6 +654,35 @@ impl UplMethods for Upl {
     &self
   }
 
+  fn set_depreciation_price(&mut self, net_retail_price: u32, by: String) -> Result<&Self, String> {
+    // Check if UPL is depreciated
+    if !self.is_depreciated() {
+      return Err("UPL is not depreciated!".into());
+    }
+    // Set depreciation price
+    self.depreciation_retail_net_price = Some(net_retail_price);
+    // Set UPL history
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::User(by),
+      UplHistoryEvent::SetDeprecatedPrice {
+        retail_net_price: net_retail_price,
+      },
+    ));
+    Ok(&self)
+  }
+
+  fn remove_depreciation_price(&mut self, by: String) -> &Self {
+    // Clear depreciation price
+    self.depreciation_retail_net_price = None;
+    // Set UPL history
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::User(by),
+      UplHistoryEvent::RemoveDepreciationPrice,
+    ));
+    // Return self ref
+    &self
+  }
+
   fn is_depreciated(&self) -> bool {
     self.depreciation_id.is_some()
   }
@@ -646,8 +703,15 @@ impl UplMethods for Upl {
     self.best_before.as_ref()
   }
 
-  fn update_best_before(&mut self, best_before: Option<NaiveDate>) -> &Upl {
-    self.best_before = best_before;
+  fn update_best_before(&mut self, to: Option<NaiveDate>, by: String) -> &Upl {
+    // Update best_before date
+    self.best_before = to;
+    // Update UPL history
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::User(by),
+      UplHistoryEvent::BestBeforeUpdated { to },
+    ));
+    // Return self ref
     &self
   }
 
@@ -679,7 +743,7 @@ impl UplMethods for Upl {
     }
   }
 
-  fn split(&mut self, new_upl_id: u32) -> Result<Upl, ()> {
+  fn split(&mut self, new_upl_id: u32, by: String) -> Result<Upl, ()> {
     match self.kind {
       Kind::BulkSku {
         sku,
@@ -692,6 +756,11 @@ impl UplMethods for Upl {
         // Update its kind to be a single Sku UPL
         // and copy the product and sku ids
         new_upl.kind = Kind::Sku { sku: sku };
+        // Set UPL history
+        self.set_history(UplHistoryItem::new(
+          CreatedBy::User(by),
+          UplHistoryEvent::Split { new_upl_id },
+        ));
         // Return the new UPL
         Ok(new_upl)
       }
@@ -699,7 +768,7 @@ impl UplMethods for Upl {
     }
   }
 
-  fn split_bulk(&mut self, new_upl_ids: Vec<u32>) -> Result<Vec<Upl>, ()> {
+  fn split_bulk(&mut self, new_upl_ids: Vec<u32>, by: String) -> Result<Vec<Upl>, ()> {
     match self.kind {
       Kind::BulkSku { sku: _, upl_pieces } => {
         if upl_pieces as usize <= new_upl_ids.len() {
@@ -709,7 +778,7 @@ impl UplMethods for Upl {
         new_upl_ids.iter().for_each(|id| {
           // We can use unwrap, as we already checked its a Bulk UPL
           // and only this can cause error
-          let upl = self.split(*id).unwrap();
+          let upl = self.split(*id, by).unwrap();
           result.push(upl);
         });
         Ok(result)
@@ -718,17 +787,19 @@ impl UplMethods for Upl {
     }
   }
 
-  fn divide(&mut self, new_upl_id: u32, requested_amount: u32) -> Result<Upl, ()> {
+  fn divide(&mut self, new_upl_id: u32, requested_amount: u32, by: String) -> Result<Upl, String> {
     match self.kind {
       Kind::Sku { sku } => {
         let amount = match self.divisible_amount {
           Some(a) => a,
-          None => return Err(()), //todo! implement this error
+          None => return Err("A megadott SKU nem mérhető ki!".into()),
         };
 
         // Check if there is enough amount inside this UPL
         if amount <= requested_amount {
-          return Err(()); // todo! implement this error
+          return Err(
+            "Túl nagy a kimérendő mennyiség! A termék kisebb, mint a kért mennyiség.".into(),
+          );
         }
 
         // We change the UPL kind to be OpenedSku
@@ -747,13 +818,27 @@ impl UplMethods for Upl {
 
         // Set new ID
         new_upl.id = new_upl_id;
-        // TODO! Set created by and at!!!
+
+        // Set created by
+        new_upl.created_by = by.clone();
+
+        // Set created at
+        new_upl.created_at = Utc::now();
 
         // Set the new UPLs kind to be a derived product
         new_upl.kind = Kind::DerivedProduct {
           derived_from: self.id,
           amount: requested_amount,
         };
+
+        // Set UPL history
+        self.set_history(UplHistoryItem::new(
+          CreatedBy::User(by),
+          UplHistoryEvent::Divided {
+            new_upl_id,
+            requested_amount,
+          },
+        ));
 
         // Return the new UPL
         Ok(new_upl)
@@ -762,7 +847,7 @@ impl UplMethods for Upl {
       Kind::BulkSku {
         sku: _,
         upl_pieces: _,
-      } => Err(()),
+      } => Err("A kért termék nem osztható! Előbb válassza szét őket!".into()),
       Kind::OpenedSku {
         sku,
         mut amount,
@@ -770,7 +855,7 @@ impl UplMethods for Upl {
       } => {
         // Check if there is enough amount inside this UPL
         if amount <= requested_amount {
-          return Err(()); // todo! implement this error
+          return Err("A kért termék túl kicsi a kívánt mértékhez!".into());
         }
 
         // Decrease its amount
@@ -784,7 +869,12 @@ impl UplMethods for Upl {
 
         // Set new ID
         new_upl.id = new_upl_id;
-        // TODO! Set created by and at!!!
+
+        // Set created by
+        new_upl.created_by = by.clone();
+
+        // Set created at
+        new_upl.created_at = Utc::now();
 
         // Set the new UPLs kind to be a derived product
         new_upl.kind = Kind::DerivedProduct {
@@ -799,11 +889,12 @@ impl UplMethods for Upl {
       Kind::DerivedProduct {
         derived_from: _,
         amount: _,
-      } => Err(()),
+      } => Err("A kért termék egy kimért termék, amiből nem tudunk többet kimérni.".into()),
     }
   }
 
-  fn merge(&mut self, upl: Upl) -> Result<&Upl, ()> {
+  fn merge(&mut self, upl: Upl, by: String) -> Result<&Upl, String> {
+    // TODO! Implement this!
     todo!()
   }
 
