@@ -17,7 +17,7 @@ pub trait UplMethods {
   /// Get related product ID
   fn get_product_id(&self) -> &u32;
   /// Get related SKU ID
-  fn get_sku_id(&self) -> Option<&u32>;
+  fn get_sku(&self) -> Option<&u32>;
   /// Get UPL Kind ref
   fn get_kind(&self) -> &Kind;
   /// Get UPL procurement ID ref
@@ -370,7 +370,7 @@ impl UplMethods for Upl {
     &self.product_id
   }
 
-  fn get_sku_id(&self) -> Option<&u32> {
+  fn get_sku(&self) -> Option<&u32> {
     match self.kind {
       Kind::Sku { sku } => Some(&sku),
       Kind::BulkSku { sku, upl_pieces: _ } => Some(&sku),
