@@ -6,12 +6,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// UPL method declarations
-pub trait UplMethods {
+pub trait UplMethods
+where
+  Self: Sized,
+{
   /// Create a new UPL Object
   /// by the given details
   /// Should be used only by the procurement service
   /// ID Should be validated
-  fn new() -> Self;
+  fn new(
+    id: u32,
+    product_id: u32,
+    sku: u32,
+    upl_type: UplType,
+    procurement_id: u32,
+    procurement_net_price: u32,
+    location: Location,
+    best_before: Option<NaiveDate>,
+    divisible_amount: Option<u32>,
+    created_by: String,
+  ) -> Result<Self, String>;
   /// Get UPL ID ref
   fn get_id(&self) -> &u32;
   /// Get related product ID
@@ -27,10 +41,7 @@ pub trait UplMethods {
   /// Check whether UPL can move to a different location
   /// depends on its acquired Lock kind
   fn can_move(&self, to: &Location) -> bool;
-  // Returns true if
-  //  - has UnOpened box -> so Kind::Sku or Kind::BulkSku,
-  //  - has NO LOCK,
-  //  -
+  // Returns true IF has NO LOCK
   fn is_available(&self) -> bool;
   // Returns true if a UPL has original package
   // un-opened and healthy:
@@ -40,15 +51,17 @@ pub trait UplMethods {
   /// Get current location ref
   fn get_location(&self) -> &Location;
   /// Try move UPL from location A to location B
-  fn move_upl(&mut self, from: Location, to: Location) -> Result<&Self, String>;
+  fn move_upl(&mut self, from: Location, to: Location, by: String) -> Result<&Self, String>;
   /// Check whether UPL has a lock or none
   fn has_lock(&self) -> bool;
   /// Get UPL lock ref
   fn get_lock(&self) -> &Lock;
+  // Check whether it can be locked to a &Lock
+  fn can_lock(&self, to: &Lock) -> bool;
   /// Try to lock UPL by a given Lock
   fn lock(&mut self, lock: Lock) -> Result<&Self, String>;
   /// Try to unlock UPL
-  fn unlock(&mut self) -> Result<&Self, String>;
+  fn unlock(&mut self) -> &Self;
   /// Check if the UPL is depreciated
   /// This can mean a damaged package, or anything the might
   /// lower the UPL value, but it can still be sold.
@@ -116,15 +129,29 @@ pub trait UplMethods {
   fn get_created_by(&self) -> &str;
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum CreatedBy {
+  // When the action is by a User
+  User(String),
+  // When the action is by the software
+  Technical,
+}
+
+impl Default for CreatedBy {
+  fn default() -> Self {
+    Self::Technical
+  }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct UplHistoryItem {
   event: UplHistoryEvent,
   created_at: DateTime<Utc>,
-  created_by: String,
+  created_by: CreatedBy,
 }
 
 impl UplHistoryItem {
-  fn new(created_by: String, event: UplHistoryEvent) -> Self {
+  fn new(created_by: CreatedBy, event: UplHistoryEvent) -> Self {
     Self {
       event,
       created_at: Utc::now(),
@@ -138,7 +165,7 @@ impl Default for UplHistoryItem {
     Self {
       event: UplHistoryEvent::default(),
       created_at: Utc::now(),
-      created_by: "".to_string(),
+      created_by: CreatedBy::default(),
     }
   }
 }
@@ -146,9 +173,7 @@ impl Default for UplHistoryItem {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum UplHistoryEvent {
   // When UPL is created
-  Created {
-    by: String,
-  },
+  Created,
   // When UPL is archived
   Archived,
   // When UPL is moved to a new location
@@ -288,6 +313,20 @@ impl Default for Lock {
   }
 }
 
+impl Lock {
+  // Behaves like Option<T>
+  pub fn is_none(&self) -> bool {
+    match self {
+      Lock::None => true,
+      _ => true,
+    }
+  }
+  // Behaves like Option<T>
+  pub fn is_some(&self) -> bool {
+    !self.is_none()
+  }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Upl {
   // Unique UPL ID
@@ -357,9 +396,51 @@ pub struct Upl {
   pub created_by: String,
 }
 
+pub enum UplType {
+  Single,
+  Bulk(u32),
+}
+
 impl UplMethods for Upl {
-  fn new() -> Self {
-    todo!()
+  fn new(
+    id: u32,
+    product_id: u32,
+    sku: u32,
+    upl_type: UplType,
+    procurement_id: u32,
+    procurement_net_price: u32,
+    location: Location,
+    best_before: Option<NaiveDate>,
+    divisible_amount: Option<u32>,
+    created_by: String,
+  ) -> Result<Self, String> {
+    Ok(Self {
+      id,
+      product_id,
+      kind: match upl_type {
+        UplType::Single => Kind::Sku { sku: sku },
+        UplType::Bulk(pieces) => Kind::BulkSku {
+          sku: sku,
+          upl_pieces: pieces,
+        },
+      },
+      procurement_id,
+      procurement_net_price,
+      location,
+      depreciation_id: None,
+      depreciation_comment: None,
+      depreciation_retail_net_price: None,
+      best_before,
+      divisible_amount,
+      lock: Lock::None,
+      // Init history vector with UplHistoryEvent::Created
+      history: vec![UplHistoryItem::new(
+        CreatedBy::User(created_by.clone()),
+        UplHistoryEvent::Created,
+      )],
+      created_at: Utc::now(),
+      created_by,
+    })
   }
 
   fn get_id(&self) -> &u32 {
@@ -438,9 +519,22 @@ impl UplMethods for Upl {
     &self.location
   }
 
-  fn move_upl(&mut self, from: Location, to: Location) -> Result<&Self, String> {
+  fn move_upl(&mut self, from: Location, to: Location, by: String) -> Result<&Self, String> {
+    // Check whether it can move to the target location or not
+    if !self.can_move(&to) {
+      return Err("Cannot move to target location".into());
+    }
+    // If it can move
+    // then move it to there
+    self.location = to;
+    // Set history event
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::User(by),
+      UplHistoryEvent::Moved { from, to },
+    ));
     // Should clear lock after move
-    todo!()
+    self.unlock();
+    Ok(&self)
   }
 
   fn has_lock(&self) -> bool {
@@ -454,14 +548,25 @@ impl UplMethods for Upl {
     &self.lock
   }
 
+  fn can_lock(&self, to: &Lock) -> bool {
+    // Can lock only if there is no lock applied
+    // otherwise you need to unlock it first
+    // then try to apply the new lock
+    self.get_lock().is_none()
+  }
+
   fn lock(&mut self, lock: Lock) -> Result<&Self, String> {
-    self.lock = lock;
+    self.lock = lock.clone();
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::Technical,
+      UplHistoryEvent::Locked { to: lock },
+    ));
     Ok(&self)
   }
 
-  fn unlock(&mut self) -> Result<&Self, String> {
+  fn unlock(&mut self) -> &Self {
     self.lock = Lock::None;
-    Ok(&self)
+    &self
   }
 
   fn is_depreciated(&self) -> bool {
