@@ -57,7 +57,7 @@ where
   /// Get UPL lock ref
   fn get_lock(&self) -> &Lock;
   // Check whether it can be locked to a &Lock
-  fn can_lock(&self, to: &Lock) -> bool;
+  fn can_lock(&self) -> bool;
   /// Try to lock UPL by a given Lock
   fn lock(&mut self, lock: Lock) -> Result<&Self, String>;
   /// Try to unlock UPL
@@ -548,7 +548,7 @@ impl UplMethods for Upl {
     &self.lock
   }
 
-  fn can_lock(&self, to: &Lock) -> bool {
+  fn can_lock(&self) -> bool {
     // Can lock only if there is no lock applied
     // otherwise you need to unlock it first
     // then try to apply the new lock
@@ -556,15 +556,23 @@ impl UplMethods for Upl {
   }
 
   fn lock(&mut self, lock: Lock) -> Result<&Self, String> {
+    // Check if wheter we can lock it or not
+    if !self.can_lock() {
+      return Err("Cannot lock! Already locked!".into());
+    }
+    // Set the new lock
     self.lock = lock.clone();
+    // Set lock history event
     self.set_history(UplHistoryItem::new(
       CreatedBy::Technical,
       UplHistoryEvent::Locked { to: lock },
     ));
+    // Return &self
     Ok(&self)
   }
 
   fn unlock(&mut self) -> &Self {
+    // Just release the lock
     self.lock = Lock::None;
     &self
   }
