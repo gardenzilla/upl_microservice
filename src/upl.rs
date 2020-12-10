@@ -414,6 +414,9 @@ impl UplMethods for Upl {
     divisible_amount: Option<u32>,
     created_by: String,
   ) -> Result<Self, String> {
+    // TODO! Here we should validate the provided ID again!
+    // Or just do the validation in higher level?
+    // Just do the validation and the duplicate check
     Ok(Self {
       id,
       product_id,
