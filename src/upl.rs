@@ -14,6 +14,10 @@ pub trait UplMethods {
   fn new() -> Self;
   /// Get UPL ID ref
   fn get_id(&self) -> &u32;
+  /// Get related product ID
+  fn get_product_id(&self) -> &u32;
+  /// Get related SKU ID
+  fn get_sku_id(&self) -> Option<&u32>;
   /// Get UPL Kind ref
   fn get_kind(&self) -> &Kind;
   /// Get UPL procurement ID ref
@@ -215,7 +219,6 @@ pub enum Kind {
   // UPL representing a single SKU
   // Has its own UPL ID
   Sku {
-    product_id: u32,
     sku: u32,
   },
   // Muliple un-opened SKU in a bulk package
@@ -223,7 +226,6 @@ pub enum Kind {
   // share the same UPL attributes. So when we split this bulk
   // package we create the UPLs by cloning its attributes.
   BulkSku {
-    product_id: u32,
     sku: u32,
     upl_pieces: u32,
   },
@@ -231,7 +233,6 @@ pub enum Kind {
   // An original sku has expanded,
   // and a part of it is already out of it.
   OpenedSku {
-    product_id: u32,
     sku: u32,
     amount: u32,
     // Derived UPLs
@@ -240,8 +241,6 @@ pub enum Kind {
   // Piece of product that
   // derives from an opened sku
   DerivedProduct {
-    // Related product ID
-    product_id: u32,
     // Derived SKU
     // Can be only Sku, or OpenedSku
     derived_from: u32,
@@ -252,10 +251,7 @@ pub enum Kind {
 
 impl Default for Kind {
   fn default() -> Self {
-    Self::Sku {
-      product_id: 0,
-      sku: 0,
-    }
+    Self::Sku { sku: 0 }
   }
 }
 
@@ -298,6 +294,8 @@ pub struct Upl {
   // i32 for the better inter
   // service communication
   pub id: u32,
+  // Related product ID
+  pub product_id: u32,
   // UPL Kind
   // Single or Bulk(u32)
   // Single means its a single UPL,
@@ -366,6 +364,26 @@ impl UplMethods for Upl {
 
   fn get_id(&self) -> &u32 {
     &self.id
+  }
+
+  fn get_product_id(&self) -> &u32 {
+    &self.product_id
+  }
+
+  fn get_sku_id(&self) -> Option<&u32> {
+    match self.kind {
+      Kind::Sku { sku } => Some(&sku),
+      Kind::BulkSku { sku, upl_pieces: _ } => Some(&sku),
+      Kind::OpenedSku {
+        sku,
+        amount: _,
+        successors: _,
+      } => Some(&sku),
+      Kind::DerivedProduct {
+        derived_from: _,
+        amount: _,
+      } => None,
+    }
   }
 
   fn get_kind(&self) -> &Kind {
@@ -746,41 +764,6 @@ impl UplMethods for Upl {
       Some(best_before) => best_before <= Utc::today().naive_utc(),
       None => true,
     })
-  }
-}
-
-impl Upl {
-  pub fn get_product_id(&self) -> u32 {
-    match self.kind {
-      Kind::Sku { product_id, sku: _ } => product_id,
-      Kind::BulkSku { product_id, sku: _ } => product_id,
-      Kind::OpenedSku {
-        product_id,
-        sku: _,
-        amount: _,
-      } => product_id,
-      Kind::DerivedProduct {
-        product_id,
-        derived_from: _,
-        amount: _,
-      } => product_id,
-    }
-  }
-  pub fn get_sku(&self) -> Option<u32> {
-    match self.kind {
-      Kind::Sku { product_id: _, sku } => Some(sku),
-      Kind::BulkSku { product_id: _, sku } => Some(sku),
-      Kind::OpenedSku {
-        product_id: _,
-        sku,
-        amount: _,
-      } => Some(sku),
-      Kind::DerivedProduct {
-        product_id: _,
-        derived_from: _,
-        amount: _,
-      } => None,
-    }
   }
 }
 
