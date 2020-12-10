@@ -41,12 +41,12 @@ where
   /// Check whether UPL can move to a different location
   /// depends on its acquired Lock kind
   fn can_move(&self, to: &Location) -> bool;
-  // Returns true IF has NO LOCK
+  /// Returns true IF has NO LOCK
   fn is_available(&self) -> bool;
-  // Returns true if a UPL has original package
-  // un-opened and healthy:
-  //  - no depreciation
-  //  - no best_before issue
+  /// Returns true if a UPL has original package
+  /// un-opened and healthy:
+  ///  - no depreciation
+  ///  - no best_before issue
   fn is_available_healthy(&self) -> bool;
   /// Get current location ref
   fn get_location(&self) -> &Location;
@@ -56,7 +56,7 @@ where
   fn has_lock(&self) -> bool;
   /// Get UPL lock ref
   fn get_lock(&self) -> &Lock;
-  // Check whether it can be locked to a &Lock
+  /// Check whether it can be locked to a &Lock
   fn can_lock(&self) -> bool;
   /// Try to lock UPL by a given Lock
   fn lock(&mut self, lock: Lock) -> Result<&Self, String>;
