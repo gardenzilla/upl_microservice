@@ -491,12 +491,8 @@ impl UplMethods for Upl {
 
   fn is_original(&self) -> bool {
     match self.kind {
-      Kind::Sku {
-        product_id: _,
-        sku: _,
-      }
+      Kind::Sku { sku: _ }
       | Kind::BulkSku {
-        product_id: _,
         sku: _,
         upl_pieces: _,
       } => true,
@@ -507,7 +503,6 @@ impl UplMethods for Upl {
   fn is_bulk(&self) -> bool {
     match self.kind {
       Kind::BulkSku {
-        product_id: _,
         sku: _,
         upl_pieces: _,
       } => true,
@@ -517,11 +512,7 @@ impl UplMethods for Upl {
 
   fn get_upl_piece(&self) -> u32 {
     match self.kind {
-      Kind::BulkSku {
-        product_id: _,
-        sku: _,
-        upl_pieces,
-      } => upl_pieces,
+      Kind::BulkSku { sku: _, upl_pieces } => upl_pieces,
       _ => 1,
     }
   }
@@ -529,7 +520,6 @@ impl UplMethods for Upl {
   fn split(&mut self, new_upl_id: u32) -> Result<Upl, ()> {
     match self.kind {
       Kind::BulkSku {
-        product_id,
         sku,
         mut upl_pieces,
       } => {
@@ -539,10 +529,7 @@ impl UplMethods for Upl {
         let mut new_upl = self.clone();
         // Update its kind to be a single Sku UPL
         // and copy the product and sku ids
-        new_upl.kind = Kind::Sku {
-          product_id: product_id,
-          sku: sku,
-        };
+        new_upl.kind = Kind::Sku { sku: sku };
         // Return the new UPL
         Ok(new_upl)
       }
@@ -552,11 +539,7 @@ impl UplMethods for Upl {
 
   fn split_bulk(&mut self, new_upl_ids: Vec<u32>) -> Result<Vec<Upl>, ()> {
     match self.kind {
-      Kind::BulkSku {
-        product_id: _,
-        sku: _,
-        upl_pieces,
-      } => {
+      Kind::BulkSku { sku: _, upl_pieces } => {
         if upl_pieces as usize <= new_upl_ids.len() {
           return Err(());
         }
@@ -575,7 +558,7 @@ impl UplMethods for Upl {
 
   fn divide(&mut self, new_upl_id: u32, requested_amount: u32) -> Result<Upl, ()> {
     match self.kind {
-      Kind::Sku { product_id, sku } => {
+      Kind::Sku { sku } => {
         let amount = match self.divisible_amount {
           Some(a) => a,
           None => return Err(()), //todo! implement this error
@@ -589,7 +572,6 @@ impl UplMethods for Upl {
         // We change the UPL kind to be OpenedSku
         // and fill it with the previous data
         self.kind = Kind::OpenedSku {
-          product_id,
           sku,
           amount: amount - requested_amount,
           successors: vec![new_upl_id],
@@ -607,7 +589,6 @@ impl UplMethods for Upl {
 
         // Set the new UPLs kind to be a derived product
         new_upl.kind = Kind::DerivedProduct {
-          product_id,
           derived_from: self.id,
           amount: requested_amount,
         };
@@ -617,12 +598,10 @@ impl UplMethods for Upl {
       }
       // We cannot divide a bulk UPL
       Kind::BulkSku {
-        product_id: _,
         sku: _,
         upl_pieces: _,
       } => Err(()),
       Kind::OpenedSku {
-        product_id,
         sku,
         mut amount,
         mut successors,
@@ -647,7 +626,6 @@ impl UplMethods for Upl {
 
         // Set the new UPLs kind to be a derived product
         new_upl.kind = Kind::DerivedProduct {
-          product_id,
           derived_from: self.id,
           amount: requested_amount,
         };
@@ -657,7 +635,6 @@ impl UplMethods for Upl {
       }
       // We cannot divide a derived UPL
       Kind::DerivedProduct {
-        product_id: _,
         derived_from: _,
         amount: _,
       } => Err(()),
@@ -670,20 +647,14 @@ impl UplMethods for Upl {
 
   fn is_divisible(&self) -> bool {
     match self.kind {
-      Kind::Sku { product_id, sku } => self.divisible_amount.is_some(),
-      Kind::BulkSku {
-        product_id,
-        sku,
-        upl_pieces,
-      } => false,
+      Kind::Sku { sku } => self.divisible_amount.is_some(),
+      Kind::BulkSku { sku, upl_pieces } => false,
       Kind::OpenedSku {
-        product_id,
         sku,
         amount,
         successors,
       } => amount > 1,
       Kind::DerivedProduct {
-        product_id: _,
         derived_from: _,
         amount: _,
       } => false,
@@ -692,20 +663,14 @@ impl UplMethods for Upl {
 
   fn get_divisible_amount(&self) -> Option<u32> {
     match self.kind {
-      Kind::Sku { product_id, sku } => self.divisible_amount.clone(),
-      Kind::BulkSku {
-        product_id,
-        sku,
-        upl_pieces,
-      } => None,
+      Kind::Sku { sku } => self.divisible_amount.clone(),
+      Kind::BulkSku { sku, upl_pieces } => None,
       Kind::OpenedSku {
-        product_id,
         sku,
         amount,
         successors,
       } => Some(amount),
       Kind::DerivedProduct {
-        product_id,
         derived_from,
         amount,
       } => None,
@@ -749,11 +714,9 @@ impl UplMethods for Upl {
     // 3. Check Kind::Sku || Kind::BulkSku
     && (match self.kind {
       Kind::Sku {
-        product_id: _,
         sku: _,
       } => true,
       Kind::BulkSku {
-        product_id: _,
         sku: _,
         upl_pieces: _,
       } => true,
@@ -771,41 +734,20 @@ impl Default for Upl {
   fn default() -> Self {
     Self {
       id: 0,
+      product_id: 0,
       kind: Kind::default(),
       procurement_id: 0,
       procurement_net_price: 0,
       location: Location::default(),
-      deprecation_id: None,
-      deprecation_comment: None,
+      depreciation_id: None,
+      depreciation_comment: None,
       depreciation_retail_net_price: None,
       best_before: None,
       divisible_amount: None,
       lock: Lock::default(),
+      history: Vec::new(),
+      created_at: Utc::now(),
       created_by: "".into(),
-      date_created: Utc::now(),
-    }
-  }
-}
-
-impl Upl {
-  /// Check whether a UPL is locked,
-  /// or not.
-  pub fn is_locked(&self) -> bool {
-    match self.lock {
-      Lock::None => false,
-      _ => true,
-    }
-  }
-  /// Get UPL lock None if no lock
-  /// otherwise the given lock kind
-  /// variant
-  pub fn get_lock(&self) -> &Lock {
-    &self.lock
-  }
-  pub fn is_scraped(&self) -> bool {
-    match self.scrap_id {
-      Some(_) => true,
-      _ => false,
     }
   }
 }
