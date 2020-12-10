@@ -712,9 +712,14 @@ impl UplMethods for Upl {
   }
 
   fn is_available(&self) -> bool {
+    // This will tell if this UPL is available for
+    // purchase - even with strong considerations.
+    //            --------------------------------
+    // This returns even if the UPL is broken, damaged,
+    // expired best_before.
+    //
     // 1. Check has no lock
-    //    Otherwise we return true even if
-    //      - It has a broken backage
+    //    Otherwise we return true in all cases
     !self.has_lock()
   }
 
