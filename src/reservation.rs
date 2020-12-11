@@ -19,6 +19,34 @@ use chrono::prelude::*;
 use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
 
+pub trait ReservationMethods
+where
+  Self: Sized,
+{
+  /// Create new reservation object
+  fn new(
+    cart_id: u32,
+    subject: Subject,
+    scope: Scope,
+    reserved_amount: u32,
+    created_by: String,
+  ) -> Self;
+  /// Get cart id ref
+  fn get_cart_id(&self) -> &u32;
+  /// Get subject ref
+  fn get_subject(&self) -> &Subject;
+  /// Get scope ref
+  fn get_scope(&self) -> &Scope;
+  /// Get amount reserved ref
+  fn get_amount_reserved(&self) -> &u32;
+  /// Get amount already taken ref
+  fn get_amount_taken(&self) -> &u32;
+  /// Set amount reserved
+  fn set_amount_reserved(&mut self, amount: u32) -> &Self;
+  /// Set amount taken
+  fn set_amount_taken(&mut self, amount: u32) -> &Self;
+}
+
 // Reservation storage
 // Itt tároljuk a
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -38,7 +66,7 @@ impl Default for Scope {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum ReservationFor {
+pub enum Subject {
   // We have a reservation to an exact SKU
   Sku(u32),
   // We have a reservation to a divided
@@ -46,7 +74,7 @@ pub enum ReservationFor {
   DividedProduct(u32),
 }
 
-impl Default for ReservationFor {
+impl Default for Subject {
   fn default() -> Self {
     Self::Sku(0)
   }
@@ -56,8 +84,8 @@ impl Default for ReservationFor {
 pub struct Reservation {
   // Cart ID that owns this reservation
   cart_id: u32,
-  // Sku or Product ReservationFor
-  reservation_for: ReservationFor,
+  // Sku or DividedProduct
+  subject: Subject,
   // Local or global scope
   // Local means reservation in a given stock
   // Global means over all locations
@@ -82,12 +110,62 @@ impl Default for Reservation {
   fn default() -> Self {
     Self {
       cart_id: 0,
-      reservation_for: ReservationFor::default(),
+      subject: Subject::default(),
       scope: Scope::default(),
       reserved_amount: 0,
       already_taken: 0,
       created_at: Utc::now(),
       created_by: "".into(),
     }
+  }
+}
+
+impl ReservationMethods for Reservation {
+  fn new(
+    cart_id: u32,
+    subject: Subject,
+    scope: Scope,
+    reserved_amount: u32,
+    created_by: String,
+  ) -> Self {
+    Self {
+      cart_id,
+      subject,
+      scope,
+      reserved_amount,
+      already_taken: 0,
+      created_at: Utc::now(),
+      created_by,
+    }
+  }
+
+  fn get_cart_id(&self) -> &u32 {
+    &self.cart_id
+  }
+
+  fn get_subject(&self) -> &Subject {
+    &self.subject
+  }
+
+  fn get_scope(&self) -> &Scope {
+    &self.scope
+  }
+
+  fn get_amount_reserved(&self) -> &u32 {
+    &self.reserved_amount
+  }
+
+  fn get_amount_taken(&self) -> &u32 {
+    &self.already_taken
+  }
+
+  fn set_amount_reserved(&mut self, amount: u32) -> &Self {
+    self.reserved_amount = amount;
+    self
+  }
+
+  fn set_amount_taken(&mut self, amount: u32) -> &Self {
+    self.already_taken = amount;
+    self
   }
 }

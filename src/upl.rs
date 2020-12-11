@@ -1,9 +1,6 @@
-use crate::id;
-use crate::prelude::*;
 use chrono::prelude::*;
 use packman::VecPackMember;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// UPL method declarations
 pub trait UplMethods
@@ -133,7 +130,7 @@ where
   fn is_divisible(&self) -> bool;
   /// If the UPL is divisible,
   /// returns the remaining amount that can be divide
-  fn get_divisible_amount(&self) -> Option<u32>;
+  fn get_divisible_amount(&self) -> Option<&u32>;
   /// Get UPL history
   fn get_history(&self) -> &Vec<UplHistoryItem>;
   /// Set UPL history event
@@ -534,7 +531,7 @@ impl UplMethods for Upl {
         // Or if it has no lock at all
         Lock::None => true,
       },
-      Location::Discard(id) => match self.lock {
+      Location::Discard(_) => match self.lock {
         Lock::Cart(_) => false,
         Lock::Delivery(_) => false,
         // Only inventory locked UPL can be moved to Discard
@@ -826,7 +823,7 @@ impl UplMethods for Upl {
         upl_pieces: _,
       } => Err("A kért termék nem osztható! Előbb válassza szét őket!".into()),
       Kind::OpenedSku {
-        sku,
+        sku: _,
         ref mut amount,
         ref mut successors,
       } => {
@@ -877,12 +874,15 @@ impl UplMethods for Upl {
 
   fn is_divisible(&self) -> bool {
     match &self.kind {
-      Kind::Sku { sku } => self.divisible_amount.is_some(),
-      Kind::BulkSku { sku, upl_pieces } => false,
+      Kind::Sku { sku: _ } => self.divisible_amount.is_some(),
+      Kind::BulkSku {
+        sku: _,
+        upl_pieces: _,
+      } => false,
       Kind::OpenedSku {
-        sku,
+        sku: _,
         amount,
-        successors,
+        successors: _,
       } => *amount > 1,
       Kind::DerivedProduct {
         derived_from: _,
@@ -891,18 +891,21 @@ impl UplMethods for Upl {
     }
   }
 
-  fn get_divisible_amount(&self) -> Option<u32> {
+  fn get_divisible_amount(&self) -> Option<&u32> {
     match &self.kind {
-      Kind::Sku { sku } => self.divisible_amount.clone(),
-      Kind::BulkSku { sku, upl_pieces } => None,
+      Kind::Sku { sku: _ } => self.divisible_amount.as_ref(),
+      Kind::BulkSku {
+        sku: _,
+        upl_pieces: _,
+      } => None,
       Kind::OpenedSku {
-        sku,
-        amount,
-        successors,
-      } => Some(*amount),
+        sku: _,
+        ref amount,
+        successors: _,
+      } => Some(amount),
       Kind::DerivedProduct {
-        derived_from,
-        amount,
+        derived_from: _,
+        amount: _,
       } => None,
     }
   }
