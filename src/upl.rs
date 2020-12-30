@@ -65,10 +65,12 @@ where
   /// Should be limited to the inventory service
   fn set_depreciation(
     &mut self,
-    deprecation_id: Option<u32>,
-    comment: Option<String>,
+    deprecation_id: u32,
+    comment: String,
     created_by: String,
   ) -> Result<&Self, String>;
+  /// Remove deprecation
+  fn remove_deprecation(&mut self, created_by: String) -> Result<&Self, String>;
   /// Set depreciation price
   /// there is room for validation if needed
   fn set_depreciation_price(
@@ -91,8 +93,7 @@ where
   /// Update UPL best_before date
   /// for any reason
   /// Should be private and used only from the inventory service
-  fn update_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: String)
-    -> &Self;
+  fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: String) -> &Self;
   /// Check whether the UPL is an un-opened original one or not
   fn is_original(&self) -> bool;
   /// Check if its a bulk UPL
@@ -156,9 +157,9 @@ where
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum CreatedBy {
-  // When the action is by a User
+  // When the action is made by a User
   User(String),
-  // When the action is by the software
+  // When the action is made by the software
   Technical,
 }
 
@@ -218,9 +219,11 @@ pub enum UplHistoryEvent {
   Unlocked,
   // When UPL is set as deprecated
   SetDeprecated {
-    depreciation_id: Option<u32>,
-    comment: Option<String>,
+    depreciation_id: u32,
+    comment: String,
   },
+  // Deprecation removed
+  DeprecationRemoved,
   // When UPL has set a special deprecation retail price
   SetDeprecatedPrice {
     retail_net_price: Option<u32>,
@@ -359,6 +362,36 @@ impl Lock {
   }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Depreciation {
+  // If the product is injured
+  // it should be depreciated. This field
+  // contains the related depreciation id
+  pub depreciation_id: u32,
+  // Related scrap price
+  // if there any.
+  // Can set if there is related depreciation_id
+  pub net_retail_price: Option<u32>,
+  // Related depreciation comment
+  // if there any
+  // From the sku scrap comment from the
+  // related depreciation record
+  pub comment: String,
+}
+
+impl Depreciation {
+  pub fn new(depreciation_id: u32, net_retail_price: Option<u32>, comment: String) -> Self {
+    Self {
+      depreciation_id,
+      net_retail_price,
+      comment,
+    }
+  }
+  pub fn set_price(&mut self, net_retail_price: Option<u32>) {
+    self.net_retail_price = net_retail_price;
+  }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Upl {
   // Unique UPL ID
@@ -381,20 +414,8 @@ pub struct Upl {
   pub location: Location, // todo? this way?
   // todo! Not NOW!
   // todo! Implement => location_history: Vec<Location>,
-  // --
-  // If the product is injured
-  // it should be depreciated. This field
-  // contains the related depreciation id
-  pub depreciation_id: Option<u32>,
-  // Related depreciation comment
-  // if there any
-  // From the sku scrap comment from the
-  // related depreciation record
-  pub depreciation_comment: Option<String>,
-  // Related scrap price
-  // if there any.
-  // Can set if there is related depreciation_id
-  pub depreciation_retail_net_price: Option<u32>,
+  // Depreciation
+  pub depreciation: Option<Depreciation>,
   // Best before date
   // Only for perishable goods.
   // Optional, but when we have one, we use
@@ -458,9 +479,7 @@ impl UplMethods for Upl {
       procurement_id,
       procurement_net_price,
       location,
-      depreciation_id: None,
-      depreciation_comment: None,
-      depreciation_retail_net_price: None,
+      depreciation: None,
       best_before,
       divisible_amount,
       lock: Lock::None,
@@ -620,23 +639,18 @@ impl UplMethods for Upl {
 
   fn set_depreciation(
     &mut self,
-    depreciation_id: Option<u32>,
-    comment: Option<String>,
+    depreciation_id: u32,
+    comment: String,
     created_by: String,
   ) -> Result<&Self, String> {
     // Check whether already depreciated
-    if depreciation_id.is_some() && self.is_depreciated() && self.depreciation_id != depreciation_id
-    {
-      return Err("Already depreciated!".into());
+    if self.depreciation.is_some() {
+      return Err("A termék már selejtezett!".into());
     }
-    // Check if there is ID when we set comment
-    if depreciation_id.is_none() && comment.is_some() {
-      return Err("ID kötelező, ha commentet írunk".into());
-    }
-    // Set ID
-    self.depreciation_id = depreciation_id;
-    // Set comment
-    self.depreciation_comment = comment.clone();
+
+    // Set depreciation
+    self.depreciation = Some(Depreciation::new(depreciation_id, None, comment.clone()));
+
     // Set UPL history
     self.set_history(UplHistoryItem::new(
       CreatedBy::User(created_by),
@@ -649,17 +663,29 @@ impl UplMethods for Upl {
     Ok(self)
   }
 
+  fn remove_deprecation(&mut self, created_by: String) -> Result<&Self, String> {
+    if self.depreciation.is_none() {
+      return Err("A UPL nem selejtezett!".to_string());
+    }
+    self.depreciation = None;
+    self.set_history(UplHistoryItem::new(
+      CreatedBy::User(created_by),
+      UplHistoryEvent::DeprecationRemoved,
+    ));
+    Ok(self)
+  }
+
   fn set_depreciation_price(
     &mut self,
     net_retail_price: Option<u32>,
     created_by: String,
   ) -> Result<&Self, String> {
-    // Check if UPL is depreciated
-    if !self.is_depreciated() {
-      return Err("UPL is not depreciated!".into());
-    }
-    // Set depreciation price
-    self.depreciation_retail_net_price = net_retail_price;
+    // Set depreciation price if there is deprecation already set
+    self
+      .depreciation
+      .ok_or("UPL is not depreciated!".to_string())?
+      .set_price(net_retail_price);
+
     // Set UPL history
     self.set_history(UplHistoryItem::new(
       CreatedBy::User(created_by),
@@ -671,26 +697,35 @@ impl UplMethods for Upl {
   }
 
   fn is_depreciated(&self) -> bool {
-    self.depreciation_id.is_some()
+    self.depreciation.is_some()
   }
 
   fn get_depreciation_id(&self) -> Option<&u32> {
-    self.depreciation_id.as_ref()
+    if let Some(dep) = self.depreciation {
+      return Some(&dep.depreciation_id);
+    }
+    None
   }
 
   fn get_depreciation_comment(&self) -> Option<&String> {
-    self.depreciation_comment.as_ref()
+    if let Some(dep) = self.depreciation {
+      return Some(&dep.comment);
+    }
+    None
   }
 
   fn get_depreciation_price(&self) -> Option<&u32> {
-    self.depreciation_retail_net_price.as_ref()
+    if let Some(dep) = self.depreciation {
+      return dep.net_retail_price.as_ref();
+    }
+    None
   }
 
   fn get_best_before(&self) -> Option<&DateTime<Utc>> {
     self.best_before.as_ref()
   }
 
-  fn update_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: String) -> &Upl {
+  fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: String) -> &Self {
     // Update best_before date
     self.best_before = best_before;
     // Update UPL history
@@ -698,7 +733,7 @@ impl UplMethods for Upl {
       CreatedBy::User(created_by),
       UplHistoryEvent::BestBeforeUpdated { to: best_before },
     ));
-    // Return self ref
+    // Return Self as ref
     self
   }
 
@@ -737,6 +772,7 @@ impl UplMethods for Upl {
         ref mut upl_pieces,
       } => {
         match upl_pieces {
+          // Check if we have more then 1 upls in bulk
           x if *x > 1 => {
             // Decrease UPL bulk pieces by one
             *upl_pieces -= 1;
@@ -774,8 +810,9 @@ impl UplMethods for Upl {
         new_upl_ids.iter().for_each(|id| {
           // We can use unwrap, as we already checked its a Bulk UPL
           // and only this can cause error
-          let upl = self.split(*id, created_by.clone()).unwrap();
-          result.push(upl);
+          if let Ok(upl) = self.split(*id, created_by.clone()) {
+            result.push(upl);
+          }
         });
         Ok(result)
       }
@@ -1003,9 +1040,7 @@ impl Default for Upl {
       procurement_id: 0,
       procurement_net_price: 0,
       location: Location::default(),
-      depreciation_id: None,
-      depreciation_comment: None,
-      depreciation_retail_net_price: None,
+      depreciation: None,
       best_before: None,
       divisible_amount: None,
       lock: Lock::default(),
