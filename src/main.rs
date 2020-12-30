@@ -1,20 +1,19 @@
+use gzlib::id::*;
 use std::path::{Path, PathBuf};
 
-use archive::ArchiveObject;
+mod prelude;
+mod upl;
+// mod archive;
+// mod index;
+
+// use archive::ArchiveObject;
+// use reservation::Reservation;
 use futures::lock::Mutex;
 use packman::*;
-use reservation::Reservation;
 use serde::Serialize;
-
-mod archive;
-mod id;
-mod index;
-mod prelude;
-mod reservation;
-mod upl;
-
-pub use id::*;
 use upl::Upl;
+
+// mod reservation;
 
 struct UplService {
   // Add | Get

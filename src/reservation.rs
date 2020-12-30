@@ -24,13 +24,7 @@ where
   Self: Sized,
 {
   /// Create new reservation object
-  fn new(
-    cart_id: u32,
-    subject: Subject,
-    scope: Scope,
-    reserved_amount: u32,
-    created_by: String,
-  ) -> Self;
+  fn new(cart_id: u32, subject: Subject, scope: Scope, reserved_amount: u32) -> Self;
   /// Get cart id ref
   fn get_cart_id(&self) -> &u32;
   /// Get subject ref
@@ -98,12 +92,6 @@ pub struct Reservation {
   // Remaining amount will be calculated
   // by reserved_amount - already_taken
   already_taken: u32,
-  // Reservation creation time
-  created_at: DateTime<Utc>,
-  // Reservation is created by
-  // Should be the same as the user who
-  // is working with the cart
-  created_by: String,
 }
 
 impl Default for Reservation {
@@ -114,28 +102,18 @@ impl Default for Reservation {
       scope: Scope::default(),
       reserved_amount: 0,
       already_taken: 0,
-      created_at: Utc::now(),
-      created_by: "".into(),
     }
   }
 }
 
 impl ReservationMethods for Reservation {
-  fn new(
-    cart_id: u32,
-    subject: Subject,
-    scope: Scope,
-    reserved_amount: u32,
-    created_by: String,
-  ) -> Self {
+  fn new(cart_id: u32, subject: Subject, scope: Scope, reserved_amount: u32) -> Self {
     Self {
       cart_id,
       subject,
       scope,
       reserved_amount,
       already_taken: 0,
-      created_at: Utc::now(),
-      created_by,
     }
   }
 
