@@ -27,15 +27,15 @@ where
   /// Get UPL ID ref
   fn get_upl_id(&self) -> &str;
   /// Get related product ID
-  fn get_product_id(&self) -> &u32;
+  fn get_product_id(&self) -> u32;
   /// Get related SKU ID
-  fn get_sku(&self) -> Option<&u32>;
+  fn get_sku(&self) -> Option<u32>;
   /// Get UPL Kind ref
   fn get_kind(&self) -> &Kind;
   /// Get UPL procurement ID ref
-  fn get_procurement_id(&self) -> &u32;
+  fn get_procurement_id(&self) -> u32;
   /// Get UPL procurement net price ref
-  fn get_procurement_net_price(&self) -> &u32;
+  fn get_procurement_net_price(&self) -> u32;
   /// Check whether UPL can move to a different location
   /// depends on its acquired Lock kind
   fn can_move(&self, to: &Location) -> bool;
@@ -83,13 +83,13 @@ where
   /// lower the UPL value, but it can still be sold.
   fn is_depreciated(&self) -> bool;
   /// Get depreciation ID if there is any
-  fn get_depreciation_id(&self) -> Option<&u32>;
+  fn get_depreciation_id(&self) -> Option<u32>;
   /// Get depreciation comment if there is any
   fn get_depreciation_comment(&self) -> Option<&String>;
   /// Get depreciation price if there is any
-  fn get_depreciation_price(&self) -> Option<&u32>;
+  fn get_depreciation_price(&self) -> Option<u32>;
   /// Get best before date if there is any
-  fn get_best_before(&self) -> Option<&DateTime<Utc>>;
+  fn get_best_before(&self) -> Option<DateTime<Utc>>;
   /// Update UPL best_before date
   /// for any reason
   /// Should be private and used only from the inventory service
@@ -144,7 +144,7 @@ where
   fn is_divisible(&self) -> bool;
   /// If the UPL is divisible,
   /// returns the remaining amount that can be divide
-  fn get_divisible_amount(&self) -> Option<&u32>;
+  fn get_divisible_amount(&self) -> Option<u32>;
   /// Get UPL history
   fn get_history(&self) -> &Vec<UplHistoryItem>;
   /// Set UPL history event
@@ -357,9 +357,9 @@ impl Lock {
     }
   }
   // Behaves like Option<T>
-  pub fn is_some(&self) -> bool {
-    !self.is_none()
-  }
+  // pub fn is_some(&self) -> bool {
+  //   !self.is_none()
+  // }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -470,11 +470,11 @@ impl UplMethods for Upl {
         .map_err(|_| "A megadott UPL ID nem valid!".to_string())?,
       product_id,
       kind: match piece {
-        x if x == 1 => Kind::Sku { sku: sku },
         x if x > 1 => Kind::BulkSku {
           sku: sku,
           upl_pieces: x,
         },
+        _ => Kind::Sku { sku: sku },
       },
       procurement_id,
       procurement_net_price,
@@ -493,19 +493,16 @@ impl UplMethods for Upl {
     })
   }
 
-  fn get_product_id(&self) -> &u32 {
-    &self.product_id
+  fn get_product_id(&self) -> u32 {
+    self.product_id
   }
 
-  fn get_sku(&self) -> Option<&u32> {
+  fn get_sku(&self) -> Option<u32> {
     match self.kind {
-      Kind::Sku { ref sku } => Some(sku),
-      Kind::BulkSku {
-        ref sku,
-        upl_pieces: _,
-      } => Some(sku),
+      Kind::Sku { sku } => Some(sku),
+      Kind::BulkSku { sku, upl_pieces: _ } => Some(sku),
       Kind::OpenedSku {
-        ref sku,
+        sku,
         amount: _,
         successors: _,
       } => Some(sku),
@@ -520,12 +517,12 @@ impl UplMethods for Upl {
     &self.kind
   }
 
-  fn get_procurement_id(&self) -> &u32 {
-    &self.procurement_id
+  fn get_procurement_id(&self) -> u32 {
+    self.procurement_id
   }
 
-  fn get_procurement_net_price(&self) -> &u32 {
-    &self.procurement_net_price
+  fn get_procurement_net_price(&self) -> u32 {
+    self.procurement_net_price
   }
 
   fn can_move(&self, to: &Location) -> bool {
@@ -681,10 +678,11 @@ impl UplMethods for Upl {
     created_by: String,
   ) -> Result<&Self, String> {
     // Set depreciation price if there is deprecation already set
-    self
-      .depreciation
-      .ok_or("UPL is not depreciated!".to_string())?
-      .set_price(net_retail_price);
+    if let Some(dep) = &mut self.depreciation {
+      dep.set_price(net_retail_price);
+    } else {
+      return Err("UPL is not depreciated!".to_string());
+    }
 
     // Set UPL history
     self.set_history(UplHistoryItem::new(
@@ -700,29 +698,29 @@ impl UplMethods for Upl {
     self.depreciation.is_some()
   }
 
-  fn get_depreciation_id(&self) -> Option<&u32> {
-    if let Some(dep) = self.depreciation {
-      return Some(&dep.depreciation_id);
+  fn get_depreciation_id(&self) -> Option<u32> {
+    if let Some(dep) = &self.depreciation {
+      return Some(dep.depreciation_id);
     }
     None
   }
 
   fn get_depreciation_comment(&self) -> Option<&String> {
-    if let Some(dep) = self.depreciation {
+    if let Some(dep) = &self.depreciation {
       return Some(&dep.comment);
     }
     None
   }
 
-  fn get_depreciation_price(&self) -> Option<&u32> {
-    if let Some(dep) = self.depreciation {
-      return dep.net_retail_price.as_ref();
+  fn get_depreciation_price(&self) -> Option<u32> {
+    if let Some(dep) = &self.depreciation {
+      return dep.net_retail_price;
     }
     None
   }
 
-  fn get_best_before(&self) -> Option<&DateTime<Utc>> {
-    self.best_before.as_ref()
+  fn get_best_before(&self) -> Option<DateTime<Utc>> {
+    self.best_before
   }
 
   fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: String) -> &Self {
@@ -766,6 +764,11 @@ impl UplMethods for Upl {
   }
 
   fn split(&mut self, new_upl_id: String, created_by: String) -> Result<Upl, String> {
+    // Check if new upl id is valid Luhn
+    new_upl_id
+      .luhn_check_ref()
+      .map_err(|_| "Az új UPL ID invalid!".to_string())?;
+
     match self.kind {
       Kind::BulkSku {
         sku,
@@ -773,7 +776,7 @@ impl UplMethods for Upl {
       } => {
         match upl_pieces {
           // Check if we have more then 1 upls in bulk
-          x if *x > 1 => {
+          &mut x if x > 1 => {
             // Decrease UPL bulk pieces by one
             *upl_pieces -= 1;
             // Clone itself as a new UPL
@@ -801,16 +804,23 @@ impl UplMethods for Upl {
     new_upl_ids: Vec<String>,
     created_by: String,
   ) -> Result<Vec<Upl>, String> {
+    // Check all the new UPL IDs to ensure all of them valid Luhn ids
+    for id in &new_upl_ids {
+      if id.luhn_check_ref().is_err() {
+        return Err(format!("Az alábbi új UPL ID invalid! {}", id));
+      }
+    }
+
     match self.kind {
       Kind::BulkSku { sku: _, upl_pieces } => {
         if upl_pieces as usize <= new_upl_ids.len() {
           return Err("A UPL nem elég nagy, hogy a kért mennyiséget leválasszuk róla!".to_string());
         }
         let mut result = Vec::new();
-        new_upl_ids.iter().for_each(|id| {
+        new_upl_ids.into_iter().for_each(|id| {
           // We can use unwrap, as we already checked its a Bulk UPL
           // and only this can cause error
-          if let Ok(upl) = self.split(*id, created_by.clone()) {
+          if let Ok(upl) = self.split(id, created_by.clone()) {
             result.push(upl);
           }
         });
@@ -826,6 +836,11 @@ impl UplMethods for Upl {
     requested_amount: u32,
     created_by: String,
   ) -> Result<Upl, String> {
+    // Check new_upl_id is valid Luhn
+    new_upl_id
+      .luhn_check_ref()
+      .map_err(|_| "Az új UPL id invalid!".to_string())?;
+
     match &mut self.kind {
       Kind::Sku { sku } => {
         let amount = match self.divisible_amount {
@@ -845,7 +860,7 @@ impl UplMethods for Upl {
         self.kind = Kind::OpenedSku {
           sku: *sku,
           amount: amount - requested_amount,
-          successors: vec![new_upl_id],
+          successors: vec![new_upl_id.clone()],
         };
 
         // We reset the divisible amount field
@@ -855,7 +870,7 @@ impl UplMethods for Upl {
         let mut new_upl = self.clone();
 
         // Set new ID
-        new_upl.id = new_upl_id;
+        new_upl.id = new_upl_id.clone();
 
         // Set created by
         new_upl.created_by = created_by.clone();
@@ -865,7 +880,7 @@ impl UplMethods for Upl {
 
         // Set the new UPLs kind to be a derived product
         new_upl.kind = Kind::DerivedProduct {
-          derived_from: self.id,
+          derived_from: self.id.clone(),
           amount: requested_amount,
         };
 
@@ -900,13 +915,13 @@ impl UplMethods for Upl {
         *amount -= requested_amount;
 
         // Set its new successor
-        successors.push(new_upl_id);
+        successors.push(new_upl_id.clone());
 
         // Clone itself
         let mut new_upl = self.clone();
 
         // Set new ID
-        new_upl.id = new_upl_id;
+        new_upl.id = new_upl_id.clone();
 
         // Set created by
         new_upl.created_by = created_by.clone();
@@ -916,7 +931,7 @@ impl UplMethods for Upl {
 
         // Set the new UPLs kind to be a derived product
         new_upl.kind = Kind::DerivedProduct {
-          derived_from: self.id,
+          derived_from: self.id.clone(),
           amount: requested_amount,
         };
 
@@ -955,18 +970,18 @@ impl UplMethods for Upl {
     }
   }
 
-  fn get_divisible_amount(&self) -> Option<&u32> {
+  fn get_divisible_amount(&self) -> Option<u32> {
     match &self.kind {
-      Kind::Sku { sku: _ } => self.divisible_amount.as_ref(),
+      Kind::Sku { sku: _ } => self.divisible_amount,
       Kind::BulkSku {
         sku: _,
         upl_pieces: _,
       } => None,
       Kind::OpenedSku {
         sku: _,
-        ref amount,
+        amount,
         successors: _,
-      } => Some(amount),
+      } => Some(*amount),
       Kind::DerivedProduct {
         derived_from: _,
         amount: _,
