@@ -13,7 +13,7 @@ where
   /// Should be used only by the procurement service
   /// ID Should be validated
   fn new(
-    id: String,
+    upl_id: String,
     product_id: u32,
     sku: u32,
     piece: u32,
@@ -224,8 +224,8 @@ pub enum UplHistoryEvent {
   },
   // Deprecation removed
   DeprecationRemoved,
-  // When UPL has set a special deprecation retail price
-  SetDeprecatedPrice {
+  // When UPL has set a special depreciation retail price
+  SetDepreciatedPrice {
     retail_net_price: Option<u32>,
   },
   Split {
@@ -380,6 +380,7 @@ pub struct Depreciation {
 }
 
 impl Depreciation {
+  /// Create a new depreciation object
   pub fn new(depreciation_id: u32, net_retail_price: Option<u32>, comment: String) -> Self {
     Self {
       depreciation_id,
@@ -387,6 +388,7 @@ impl Depreciation {
       comment,
     }
   }
+  /// Set depreciation price
   pub fn set_price(&mut self, net_retail_price: Option<u32>) {
     self.net_retail_price = net_retail_price;
   }
@@ -450,7 +452,7 @@ pub struct Upl {
 
 impl UplMethods for Upl {
   fn new(
-    id: String,
+    upl_id: String,
     product_id: u32,
     sku: u32,
     piece: u32,
@@ -465,7 +467,7 @@ impl UplMethods for Upl {
     // Just do the validation and the duplicate check
     Ok(Self {
       // Check if ID is Luhn valid
-      id: id
+      id: upl_id
         .luhn_check()
         .map_err(|_| "A megadott UPL ID nem valid!".to_string())?,
       product_id,
@@ -687,10 +689,12 @@ impl UplMethods for Upl {
     // Set UPL history
     self.set_history(UplHistoryItem::new(
       CreatedBy::User(created_by),
-      UplHistoryEvent::SetDeprecatedPrice {
+      UplHistoryEvent::SetDepreciatedPrice {
         retail_net_price: net_retail_price,
       },
     ));
+
+    // Return Self as ref
     Ok(self)
   }
 
