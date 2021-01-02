@@ -8,8 +8,6 @@ use tonic::{transport::Server, Request, Response, Status};
 mod prelude;
 mod upl;
 
-use upl::*;
-
 // mod reservation;
 
 struct UplService {
@@ -140,10 +138,10 @@ impl Upl for UplService {
 #[tokio::main]
 async fn main() -> prelude::ServiceResult<()> {
   // Init UPL DB
-  let upls: VecPack<Upl> =
+  let db: VecPack<upl::Upl> =
     VecPack::load_or_init(PathBuf::from("data/upls")).expect("Error while loading UPL database");
 
-  let upl_service = UplService::new(db);
+  let upl_service = UplService::init(db);
 
   let addr = env::var("SERVICE_ADDR_PRICING")
     .unwrap_or("[::1]:50061".into())
@@ -156,7 +154,7 @@ async fn main() -> prelude::ServiceResult<()> {
   // Spawn the server into a runtime
   tokio::task::spawn(async move {
     Server::builder()
-      .add_service(PricingServer::new(pricing_service))
+      .add_service(UplServer::new(upl_service))
       .serve_with_shutdown(addr, async { rx.await.unwrap() })
       .await
   });
