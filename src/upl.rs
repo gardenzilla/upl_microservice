@@ -22,7 +22,7 @@ where
     location: Location,
     best_before: Option<DateTime<Utc>>,
     divisible_amount: Option<u32>,
-    created_by: String,
+    created_by: u32,
   ) -> Result<Self, String>;
   /// Get UPL ID ref
   fn get_upl_id(&self) -> &str;
@@ -49,8 +49,7 @@ where
   /// Get current location ref
   fn get_location(&self) -> &Location;
   /// Try move UPL from location A to location B
-  fn move_upl(&mut self, from: Location, to: Location, created_by: String)
-    -> Result<&Self, String>;
+  fn move_upl(&mut self, from: Location, to: Location, created_by: u32) -> Result<&Self, String>;
   /// Check whether UPL has a lock or none
   fn has_lock(&self) -> bool;
   /// Get UPL lock ref
@@ -67,16 +66,16 @@ where
     &mut self,
     deprecation_id: u32,
     comment: String,
-    created_by: String,
+    created_by: u32,
   ) -> Result<&Self, String>;
   /// Remove deprecation
-  fn remove_deprecation(&mut self, created_by: String) -> Result<&Self, String>;
+  fn remove_deprecation(&mut self, created_by: u32) -> Result<&Self, String>;
   /// Set depreciation price
   /// there is room for validation if needed
   fn set_depreciation_price(
     &mut self,
     net_depreciated_price: Option<u32>,
-    created_by: String,
+    created_by: u32,
   ) -> Result<&Self, String>;
   /// Check if the UPL is depreciated
   /// This can mean a damaged package, or anything the might
@@ -93,7 +92,7 @@ where
   /// Update UPL best_before date
   /// for any reason
   /// Should be private and used only from the inventory service
-  fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: String) -> &Self;
+  fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: u32) -> &Self;
   /// Check whether the UPL is an un-opened original one or not
   fn is_original(&self) -> bool;
   /// Check if its a bulk UPL
@@ -109,18 +108,14 @@ where
   /// ----------
   /// in a higher lever you must save the split UPL in the UPL store
   /// ID must be validated
-  fn split(&mut self, new_upl_id: String, created_by: String) -> Result<Upl, String>;
+  fn split(&mut self, new_upl_id: String, created_by: u32) -> Result<Upl, String>;
   /// Split multiple UPLs from the bulk ones
   /// ----------
   /// IMPORTANT!
   /// ----------
   /// in a higher lever you must save the split UPL in the UPL store
   /// IDs must be validated
-  fn split_bulk(
-    &mut self,
-    new_upl_ids: Vec<String>,
-    created_by: String,
-  ) -> Result<Vec<Upl>, String>;
+  fn split_bulk(&mut self, new_upl_ids: Vec<String>, created_by: u32) -> Result<Vec<Upl>, String>;
   /// Divide a divisible UPL into two UPLs
   /// If the UPL is a divisible Sku, then it will become an OpenedSku
   /// and the resulted new Upl will be a DerivedProduct
@@ -133,12 +128,12 @@ where
     &mut self,
     new_upl_id: String,
     requested_amount: u32,
-    created_by: String,
+    created_by: u32,
   ) -> Result<Upl, String>;
   /// Try to merge a source and a derived UPL into together
   /// When for any reason we want to put back a derived UPL into
   /// its ancestor
-  // fn merge(&mut self, upl_to_destroy: Upl, created_by: String) -> Result<&Upl, String>;
+  // fn merge(&mut self, upl_to_destroy: Upl, created_by: u32) -> Result<&Upl, String>;
 
   /// Check whether this UPL is divisible or not
   fn is_divisible(&self) -> bool;
@@ -152,13 +147,13 @@ where
   /// Get UPL object creation time
   fn get_created_at(&self) -> DateTime<Utc>;
   /// Get UPL object created by value (user id)
-  fn get_created_by(&self) -> &str;
+  fn get_created_by(&self) -> u32;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum CreatedBy {
   // When the action is made by a User
-  User(String),
+  Uid(u32),
   // When the action is made by the software
   Technical,
 }
@@ -447,7 +442,7 @@ pub struct Upl {
   // UPL object creation time
   pub created_at: DateTime<Utc>,
   // UPL object created by (user id)
-  pub created_by: String,
+  pub created_by: u32,
 }
 
 impl UplMethods for Upl {
@@ -461,7 +456,7 @@ impl UplMethods for Upl {
     location: Location,
     best_before: Option<DateTime<Utc>>,
     divisible_amount: Option<u32>,
-    created_by: String,
+    created_by: u32,
   ) -> Result<Self, String> {
     // Or just do the validation in higher level?
     // Just do the validation and the duplicate check
@@ -487,7 +482,7 @@ impl UplMethods for Upl {
       lock: Lock::None,
       // Init history vector with UplHistoryEvent::Created
       history: vec![UplHistoryItem::new(
-        CreatedBy::User(created_by.clone()),
+        CreatedBy::Uid(created_by.clone()),
         UplHistoryEvent::Created,
       )],
       created_at: Utc::now(),
@@ -567,12 +562,7 @@ impl UplMethods for Upl {
     &self.location
   }
 
-  fn move_upl(
-    &mut self,
-    from: Location,
-    to: Location,
-    created_by: String,
-  ) -> Result<&Self, String> {
+  fn move_upl(&mut self, from: Location, to: Location, created_by: u32) -> Result<&Self, String> {
     // Check whether it can move to the target location or not
     if !self.can_move(&to) {
       return Err("Cannot move to target location".into());
@@ -582,7 +572,7 @@ impl UplMethods for Upl {
     self.location = to.clone();
     // Set history event
     self.set_history(UplHistoryItem::new(
-      CreatedBy::User(created_by),
+      CreatedBy::Uid(created_by),
       UplHistoryEvent::Moved { from, to },
     ));
     // Should clear lock after move
@@ -640,7 +630,7 @@ impl UplMethods for Upl {
     &mut self,
     depreciation_id: u32,
     comment: String,
-    created_by: String,
+    created_by: u32,
   ) -> Result<&Self, String> {
     // Check whether already depreciated
     if self.depreciation.is_some() {
@@ -652,7 +642,7 @@ impl UplMethods for Upl {
 
     // Set UPL history
     self.set_history(UplHistoryItem::new(
-      CreatedBy::User(created_by),
+      CreatedBy::Uid(created_by),
       UplHistoryEvent::SetDeprecated {
         depreciation_id,
         comment,
@@ -662,13 +652,13 @@ impl UplMethods for Upl {
     Ok(self)
   }
 
-  fn remove_deprecation(&mut self, created_by: String) -> Result<&Self, String> {
+  fn remove_deprecation(&mut self, created_by: u32) -> Result<&Self, String> {
     if self.depreciation.is_none() {
       return Err("A UPL nem selejtezett!".to_string());
     }
     self.depreciation = None;
     self.set_history(UplHistoryItem::new(
-      CreatedBy::User(created_by),
+      CreatedBy::Uid(created_by),
       UplHistoryEvent::DeprecationRemoved,
     ));
     Ok(self)
@@ -677,7 +667,7 @@ impl UplMethods for Upl {
   fn set_depreciation_price(
     &mut self,
     net_retail_price: Option<u32>,
-    created_by: String,
+    created_by: u32,
   ) -> Result<&Self, String> {
     // Set depreciation price if there is deprecation already set
     if let Some(dep) = &mut self.depreciation {
@@ -688,7 +678,7 @@ impl UplMethods for Upl {
 
     // Set UPL history
     self.set_history(UplHistoryItem::new(
-      CreatedBy::User(created_by),
+      CreatedBy::Uid(created_by),
       UplHistoryEvent::SetDepreciatedPrice {
         retail_net_price: net_retail_price,
       },
@@ -727,12 +717,12 @@ impl UplMethods for Upl {
     self.best_before
   }
 
-  fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: String) -> &Self {
+  fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: u32) -> &Self {
     // Update best_before date
     self.best_before = best_before;
     // Update UPL history
     self.set_history(UplHistoryItem::new(
-      CreatedBy::User(created_by),
+      CreatedBy::Uid(created_by),
       UplHistoryEvent::BestBeforeUpdated { to: best_before },
     ));
     // Return Self as ref
@@ -767,7 +757,7 @@ impl UplMethods for Upl {
     }
   }
 
-  fn split(&mut self, new_upl_id: String, created_by: String) -> Result<Upl, String> {
+  fn split(&mut self, new_upl_id: String, created_by: u32) -> Result<Upl, String> {
     // Check if new upl id is valid Luhn
     new_upl_id
       .luhn_check_ref()
@@ -790,7 +780,7 @@ impl UplMethods for Upl {
             new_upl.kind = Kind::Sku { sku: sku };
             // Set UPL history
             self.set_history(UplHistoryItem::new(
-              CreatedBy::User(created_by),
+              CreatedBy::Uid(created_by),
               UplHistoryEvent::Split { new_upl_id },
             ));
             // Return the new UPL
@@ -803,11 +793,7 @@ impl UplMethods for Upl {
     }
   }
 
-  fn split_bulk(
-    &mut self,
-    new_upl_ids: Vec<String>,
-    created_by: String,
-  ) -> Result<Vec<Upl>, String> {
+  fn split_bulk(&mut self, new_upl_ids: Vec<String>, created_by: u32) -> Result<Vec<Upl>, String> {
     // Check all the new UPL IDs to ensure all of them valid Luhn ids
     for id in &new_upl_ids {
       if id.luhn_check_ref().is_err() {
@@ -838,7 +824,7 @@ impl UplMethods for Upl {
     &mut self,
     new_upl_id: String,
     requested_amount: u32,
-    created_by: String,
+    created_by: u32,
   ) -> Result<Upl, String> {
     // Check new_upl_id is valid Luhn
     new_upl_id
@@ -890,7 +876,7 @@ impl UplMethods for Upl {
 
         // Set UPL history
         self.set_history(UplHistoryItem::new(
-          CreatedBy::User(created_by),
+          CreatedBy::Uid(created_by),
           UplHistoryEvent::Divided {
             new_upl_id,
             requested_amount,
@@ -1006,8 +992,8 @@ impl UplMethods for Upl {
     self.created_at
   }
 
-  fn get_created_by(&self) -> &str {
-    &self.created_by
+  fn get_created_by(&self) -> u32 {
+    self.created_by
   }
 
   fn is_available(&self) -> bool {
@@ -1065,7 +1051,7 @@ impl Default for Upl {
       lock: Lock::default(),
       history: Vec::new(),
       created_at: Utc::now(),
-      created_by: "".into(),
+      created_by: 0,
     }
   }
 }
