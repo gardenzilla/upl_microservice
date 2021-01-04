@@ -20,6 +20,9 @@ impl UplService {
       upls: Mutex::new(upls),
     }
   }
+  async fn create_new(&self, r: UplNew) -> ServiceResult<UplObj> {
+    todo!()
+  }
 }
 
 #[tonic::async_trait]
@@ -143,8 +146,8 @@ async fn main() -> prelude::ServiceResult<()> {
 
   let upl_service = UplService::init(db);
 
-  let addr = env::var("SERVICE_ADDR_PRICING")
-    .unwrap_or("[::1]:50061".into())
+  let addr = env::var("SERVICE_ADDR_UPL")
+    .unwrap_or("[::1]:50064".into())
     .parse()
     .unwrap();
 
