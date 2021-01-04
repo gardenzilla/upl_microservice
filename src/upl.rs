@@ -48,8 +48,8 @@ where
   fn is_available_healthy(&self) -> bool;
   /// Get current location ref
   fn get_location(&self) -> &Location;
-  /// Try move UPL from location A to location B
-  fn move_upl(&mut self, from: Location, to: Location, created_by: u32) -> Result<&Self, String>;
+  /// Try move UPL to location B
+  fn move_upl(&mut self, to: Location, created_by: u32) -> Result<&Self, String>;
   /// Check whether UPL has a lock or none
   fn has_lock(&self) -> bool;
   /// Get UPL lock ref
@@ -564,11 +564,13 @@ impl UplMethods for Upl {
     &self.location
   }
 
-  fn move_upl(&mut self, from: Location, to: Location, created_by: u32) -> Result<&Self, String> {
+  fn move_upl(&mut self, to: Location, created_by: u32) -> Result<&Self, String> {
     // Check whether it can move to the target location or not
     if !self.can_move(&to) {
       return Err("Cannot move to target location".into());
     }
+    // Preserve from_location to save later into history
+    let from = self.location.clone();
     // If it can move
     // then move it to there
     self.location = to.clone();

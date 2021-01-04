@@ -350,6 +350,37 @@ impl UplService {
     // Returns self as UplObj
     Ok(res.into())
   }
+
+  async fn close_cart(&self, r: CloseCartRequest) -> ServiceResult<()> {
+    // Try to find all the UPLs that have locked to
+    // this given cart; and move them into that Cart Location.
+    // This will automatically removes the lock::Cart(ID)
+    self
+      .upls
+      .lock()
+      .await
+      .as_vec_mut()
+      .into_iter()
+      .for_each(|upl| {
+        if upl.unpack().get_lock() == &upl::Lock::Cart(r.cart_id) {
+          // todo! manage if result is error?
+          let _ = upl
+            .as_mut()
+            .unpack()
+            .move_upl(upl::Location::Cart(r.cart_id), r.created_by);
+        }
+      });
+    Ok(())
+  }
+
+  async fn close_inventory(&self, r: CloseInventoryRequest) -> ServiceResult<()> {
+    for upl in self.upls.lock().await.as_vec_mut() {
+      if upl.get_lock() == &upl::Lock::Inventory(r.inventory_id) {
+        upl.as_mut().unpack().unlock_forced();
+      }
+    }
+    Ok(())
+  }
 }
 
 #[tonic::async_trait]
@@ -517,18 +548,17 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
     Ok(Response::new(res))
   }
 
-  async fn close_cart(
-    &self,
-    request: Request<CloseCartRequest>,
-  ) -> Result<Response<UplObj>, Status> {
-    todo!()
+  async fn close_cart(&self, request: Request<CloseCartRequest>) -> Result<Response<()>, Status> {
+    let _ = self.close_cart(request.into_inner()).await?;
+    Ok(Response::new(()))
   }
 
   async fn close_inventory(
     &self,
     request: Request<CloseInventoryRequest>,
-  ) -> Result<Response<UplObj>, Status> {
-    todo!()
+  ) -> Result<Response<()>, Status> {
+    let _ = self.close_inventory(request.into_inner()).await?;
+    Ok(Response::new(()))
   }
 }
 
