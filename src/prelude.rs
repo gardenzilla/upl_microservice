@@ -122,7 +122,7 @@ impl From<Location> for upl_obj::Location {
 impl From<Upl> for gzlib::proto::upl::UplObj {
   fn from(upl: Upl) -> Self {
     Self {
-      id: upl.id,
+      id: upl.id.clone(),
       product_id: upl.product_id,
       upl_piece: upl.get_upl_piece(),
       is_healty: upl.is_available_healthy(),
@@ -130,10 +130,10 @@ impl From<Upl> for gzlib::proto::upl::UplObj {
         Some(bbefore) => bbefore.to_rfc3339(),
         None => "".to_string(),
       },
-      depreciation: match upl.depreciation {
+      depreciation: match &upl.depreciation {
         Some(dp) => Some(upl_obj::Depreciation {
           depreciation_id: dp.depreciation_id,
-          depreciation_comment: dp.comment,
+          depreciation_comment: dp.comment.clone(),
           depreciation_net_price: dp.net_retail_price.unwrap_or(0),
         }),
         None => None,

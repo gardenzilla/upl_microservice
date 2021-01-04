@@ -1,6 +1,7 @@
 use gzlib::proto::upl::upl_server::*;
 use gzlib::proto::upl::*;
 use packman::*;
+use prelude::*;
 use std::{env, path::PathBuf};
 use tokio::sync::{oneshot, Mutex};
 use tonic::{transport::Server, Request, Response, Status};
@@ -35,7 +36,7 @@ impl Upl for UplService {
     todo!()
   }
 
-  type GetBySkuStream;
+  type GetBySkuStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
 
   async fn get_by_sku(
     &self,
@@ -44,7 +45,7 @@ impl Upl for UplService {
     todo!()
   }
 
-  type GetBySkuAndLocationStream;
+  type GetBySkuAndLocationStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
 
   async fn get_by_sku_and_location(
     &self,
@@ -53,7 +54,7 @@ impl Upl for UplService {
     todo!()
   }
 
-  type GetByLocationStream;
+  type GetByLocationStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
 
   async fn get_by_location(
     &self,
@@ -98,6 +99,13 @@ impl Upl for UplService {
     todo!()
   }
 
+  async fn remove_deprecation_price(
+    &self,
+    request: Request<RemoveDeprecationPriceRequest>,
+  ) -> Result<Response<UplObj>, Status> {
+    todo!()
+  }
+
   async fn lock_to_cart(
     &self,
     request: Request<CartLockRequest>,
@@ -126,14 +134,17 @@ impl Upl for UplService {
     todo!()
   }
 
-  async fn close_cart(&self, request: Request<CloseCartRequest>) -> Result<Response<E>, Status> {
+  async fn close_cart(
+    &self,
+    request: Request<CloseCartRequest>,
+  ) -> Result<Response<UplObj>, Status> {
     todo!()
   }
 
   async fn close_inventory(
     &self,
     request: Request<CloseInventoryRequest>,
-  ) -> Result<Response<E>, Status> {
+  ) -> Result<Response<UplObj>, Status> {
     todo!()
   }
 }
