@@ -241,7 +241,7 @@ impl Default for UplHistoryEvent {
   }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Location {
   // Upl is in stock
   Stock(u32),
