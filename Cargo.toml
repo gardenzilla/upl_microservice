@@ -7,8 +7,10 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-stream = "0.2"
 chrono = {version = "0.4", features = ["serde"]}
-futures = "*"
+futures = "0.3.8"
+futures-util = "0.3.8"
 gzlib = "*"
 nanoid = "0.3.0"
 packman = "*"

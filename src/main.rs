@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use futures_util::stream::StreamExt;
 use gzlib::proto::upl::upl_server::*;
 use gzlib::proto::upl::*;
 use packman::*;
@@ -388,6 +389,23 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
   async fn create_new(&self, request: Request<UplNew>) -> Result<Response<UplObj>, Status> {
     let res = self.create_new(request.into_inner()).await?;
     Ok(Response::new(res))
+  }
+
+  async fn create_new_bulk(
+    &self,
+    request: Request<tonic::Streaming<UplNew>>,
+  ) -> Result<Response<()>, Status> {
+    let mut stream = request.into_inner();
+
+    let _ = async_stream::try_stream! {
+        while let Some(new_upl) = stream.next().await {
+          if let Ok(upl) = new_upl {
+            let _ = self.create_new(upl).await;
+          }
+        }
+    };
+
+    Ok(Response::new(()))
   }
 
   async fn get_by_id(&self, request: Request<ByIdRequest>) -> Result<Response<UplObj>, Status> {
