@@ -282,6 +282,74 @@ impl UplService {
     // Return self as UplObj
     Ok(res.into())
   }
+
+  async fn lock_to_cart(&self, r: CartLockRequest) -> ServiceResult<UplObj> {
+    // Try to find UPL and lock to Cart(ID)
+    let res = self
+      .upls
+      .lock()
+      .await
+      .find_id_mut(&r.upl)?
+      .as_mut()
+      .unpack()
+      .lock(upl::Lock::Cart(r.cart_id), r.created_by)
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+
+    // Returns self as UplObj
+    Ok(res.into())
+  }
+
+  async fn lock_to_inventory(&self, r: InventoryLockRequest) -> ServiceResult<UplObj> {
+    // Try to find UPL and lock to Cart(ID)
+    let res = self
+      .upls
+      .lock()
+      .await
+      .find_id_mut(&r.upl)?
+      .as_mut()
+      .unpack()
+      .lock(upl::Lock::Inventory(r.inventory_id), r.created_by)
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+
+    // Returns self as UplObj
+    Ok(res.into())
+  }
+
+  async fn release_lock_from_cart(&self, r: CartUnlockRequest) -> ServiceResult<UplObj> {
+    // Try to find UPL and unlock to Cart(ID)
+    let res = self
+      .upls
+      .lock()
+      .await
+      .find_id_mut(&r.upl)?
+      .as_mut()
+      .unpack()
+      .unlock(upl::Lock::Cart(r.cart_id), r.created_by)
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+
+    // Returns self as UplObj
+    Ok(res.into())
+  }
+
+  async fn release_lock_from_inventory(&self, r: InventoryUnlockRequest) -> ServiceResult<UplObj> {
+    // Try to find UPL and unlock to Cart(ID)
+    let res = self
+      .upls
+      .lock()
+      .await
+      .find_id_mut(&r.upl)?
+      .as_mut()
+      .unpack()
+      .unlock(upl::Lock::Inventory(r.inventory_id), r.created_by)
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone();
+
+    // Returns self as UplObj
+    Ok(res.into())
+  }
 }
 
 #[tonic::async_trait]
@@ -419,28 +487,34 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
     &self,
     request: Request<CartLockRequest>,
   ) -> Result<Response<UplObj>, Status> {
-    todo!()
+    let res = self.lock_to_cart(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn lock_to_inventory(
     &self,
     request: Request<InventoryLockRequest>,
   ) -> Result<Response<UplObj>, Status> {
-    todo!()
+    let res = self.lock_to_inventory(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn release_lock_from_cart(
     &self,
     request: Request<CartUnlockRequest>,
   ) -> Result<Response<UplObj>, Status> {
-    todo!()
+    let res = self.release_lock_from_cart(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
   async fn release_lock_from_inventory(
     &self,
     request: Request<InventoryUnlockRequest>,
   ) -> Result<Response<UplObj>, Status> {
-    todo!()
+    let res = self
+      .release_lock_from_inventory(request.into_inner())
+      .await?;
+    Ok(Response::new(res))
   }
 
   async fn close_cart(

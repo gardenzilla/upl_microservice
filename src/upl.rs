@@ -57,9 +57,11 @@ where
   /// Check whether it can be locked to a &Lock
   fn can_lock(&self) -> bool;
   /// Try to lock UPL by a given Lock
-  fn lock(&mut self, lock: Lock) -> Result<&Self, String>;
+  fn lock(&mut self, lock: Lock, created_by: u32) -> Result<&Self, String>;
   /// Try to unlock UPL
-  fn unlock(&mut self) -> &Self;
+  fn unlock(&mut self, lock: Lock, created_by: u32) -> Result<&Self, String>;
+  /// Unlock UPL anyway
+  fn unlock_forced(&mut self) -> &Self;
   /// Set depreciation
   /// Should be limited to the inventory service
   fn set_depreciation(
@@ -312,7 +314,7 @@ impl Default for Kind {
 
 /// Lock kinds
 /// None means there is no lock, so the UPL can be moved away.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Lock {
   // Cart lock means the given UPL is locked to a specific Cart
   // so it cannot move away, as its under a sales process.
@@ -576,7 +578,7 @@ impl UplMethods for Upl {
       UplHistoryEvent::Moved { from, to },
     ));
     // Should clear lock after move
-    self.unlock();
+    self.unlock_forced();
     Ok(self)
   }
 
@@ -598,7 +600,7 @@ impl UplMethods for Upl {
     self.get_lock().is_none()
   }
 
-  fn lock(&mut self, lock: Lock) -> Result<&Self, String> {
+  fn lock(&mut self, lock: Lock, created_by: u32) -> Result<&Self, String> {
     // Check if wheter we can lock it or not
     if !self.can_lock() {
       return Err("Cannot lock! Already locked!".into());
@@ -607,14 +609,31 @@ impl UplMethods for Upl {
     self.lock = lock.clone();
     // Set lock history event
     self.set_history(UplHistoryItem::new(
-      CreatedBy::Technical,
+      CreatedBy::Uid(created_by),
       UplHistoryEvent::Locked { to: lock },
     ));
     // Return &self
     Ok(self)
   }
 
-  fn unlock(&mut self) -> &Self {
+  fn unlock(&mut self, lock: Lock, created_by: u32) -> Result<&Self, String> {
+    match self.lock == lock {
+      true => {
+        // Just release the lock
+        self.lock = Lock::None;
+        // Set UPL history
+        self.set_history(UplHistoryItem::new(
+          CreatedBy::Uid(created_by),
+          UplHistoryEvent::Unlocked,
+        ));
+        // Return self ref
+        Ok(self)
+      }
+      false => Err("A kért UPL zárolása nem fololdható. Nem megfelelő a forrás zárlat!".into()),
+    }
+  }
+
+  fn unlock_forced(&mut self) -> &Self {
     // Just release the lock
     self.lock = Lock::None;
     // Set UPL history
