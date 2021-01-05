@@ -1,4 +1,3 @@
-ARG package_name=upl_microservice
 FROM debian:buster-slim
 WORKDIR /usr/local/bin
 COPY ./target/release/${package_name} /usr/local/bin/${package_name}
