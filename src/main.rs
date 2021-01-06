@@ -60,20 +60,33 @@ impl UplService {
     Ok(new_upl.into())
   }
 
+  async fn get_bulk(&self, r: BulkRequest) -> ServiceResult<Vec<UplObj>> {
+    let res = self
+      .upls
+      .lock()
+      .await
+      .iter()
+      .filter(|upl| r.upl_ids.contains(&upl.unpack().id))
+      .map(|upl| upl.unpack().clone().into())
+      .collect::<Vec<UplObj>>();
+
+    Ok(res)
+  }
+
   async fn get_by_id(&self, r: ByIdRequest) -> ServiceResult<UplObj> {
     let res = self.upls.lock().await.find_id(&r.upl_id)?.unpack().clone();
     Ok(res.into())
   }
 
-  async fn get_by_sku(&self, r: BySkuRequest) -> ServiceResult<Vec<UplObj>> {
+  async fn get_by_sku(&self, r: BySkuRequest) -> ServiceResult<Vec<String>> {
     let res = self
       .upls
       .lock()
       .await
       .iter()
       .filter(|upl| upl.unpack().get_sku() == Some(r.sku))
-      .map(|upl| upl.unpack().clone().into())
-      .collect::<Vec<UplObj>>();
+      .map(|upl| upl.unpack().id.clone())
+      .collect::<Vec<String>>();
 
     Ok(res)
   }
@@ -81,7 +94,7 @@ impl UplService {
   async fn get_by_sku_and_location(
     &self,
     r: BySkuAndLocationRequest,
-  ) -> ServiceResult<Vec<UplObj>> {
+  ) -> ServiceResult<Vec<String>> {
     let l: LocationKind = match LocationKind::from_i32(r.location_kind) {
       Some(l) => l,
       None => {
@@ -108,13 +121,13 @@ impl UplService {
         let _upl = upl.unpack();
         _upl.get_sku() == Some(r.sku) && _upl.location == location
       })
-      .map(|upl| upl.unpack().clone().into())
-      .collect::<Vec<UplObj>>();
+      .map(|upl| upl.unpack().id.clone())
+      .collect::<Vec<String>>();
 
     Ok(res)
   }
 
-  async fn get_by_location(&self, r: ByLocationRequest) -> ServiceResult<Vec<UplObj>> {
+  async fn get_by_location(&self, r: ByLocationRequest) -> ServiceResult<Vec<String>> {
     let l: LocationKind = match LocationKind::from_i32(r.location_kind) {
       Some(l) => l,
       None => {
@@ -141,8 +154,8 @@ impl UplService {
         let _upl = upl.unpack();
         _upl.location == location
       })
-      .map(|upl| upl.unpack().clone().into())
-      .collect::<Vec<UplObj>>();
+      .map(|upl| upl.unpack().id.clone())
+      .collect::<Vec<String>>();
 
     Ok(res)
   }
@@ -408,78 +421,53 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
     Ok(Response::new(()))
   }
 
+  type GetBulkStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
+
+  async fn get_bulk(
+    &self,
+    request: Request<BulkRequest>,
+  ) -> Result<Response<Self::GetBulkStream>, Status> {
+    // Create channel for stream response
+    let (mut tx, rx) = tokio::sync::mpsc::channel(100);
+
+    // Get resources as Vec<SourceObject>
+    let res = self.get_bulk(request.into_inner()).await?;
+
+    // Send the result items through the channel
+    for sobject in res {
+      tx.send(Ok(sobject))
+        .await
+        .map_err(|_| Status::internal("Error while sending sources over channel"))?;
+    }
+
+    // Send back the receiver
+    Ok(Response::new(rx))
+  }
+
   async fn get_by_id(&self, request: Request<ByIdRequest>) -> Result<Response<UplObj>, Status> {
     let res = self.get_by_id(request.into_inner()).await?;
     Ok(Response::new(res))
   }
 
-  type GetBySkuStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
-
-  async fn get_by_sku(
-    &self,
-    request: Request<BySkuRequest>,
-  ) -> Result<Response<Self::GetBySkuStream>, Status> {
-    // Create channel for stream response
-    let (mut tx, rx) = tokio::sync::mpsc::channel(100);
-
-    // Get resources as Vec<SourceObject>
-    let res = self.get_by_sku(request.into_inner()).await?;
-
-    // Send the result items through the channel
-    for sobject in res {
-      tx.send(Ok(sobject))
-        .await
-        .map_err(|_| Status::internal("Error while sending sources over channel"))?;
-    }
-
-    // Send back the receiver
-    Ok(Response::new(rx))
+  async fn get_by_sku(&self, request: Request<BySkuRequest>) -> Result<Response<UplIds>, Status> {
+    let upl_ids = self.get_by_sku(request.into_inner()).await?;
+    Ok(Response::new(UplIds { upl_ids }))
   }
-
-  type GetBySkuAndLocationStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
 
   async fn get_by_sku_and_location(
     &self,
     request: Request<BySkuAndLocationRequest>,
-  ) -> Result<Response<Self::GetBySkuAndLocationStream>, Status> {
-    // Create channel for stream response
-    let (mut tx, rx) = tokio::sync::mpsc::channel(100);
-
-    // Get resources as Vec<SourceObject>
-    let res = self.get_by_sku_and_location(request.into_inner()).await?;
-
-    // Send the result items through the channel
-    for sobject in res {
-      tx.send(Ok(sobject))
-        .await
-        .map_err(|_| Status::internal("Error while sending sources over channel"))?;
-    }
-
-    // Send back the receiver
-    Ok(Response::new(rx))
+  ) -> Result<Response<UplIds>, Status> {
+    let upl_ids = self.get_by_sku_and_location(request.into_inner()).await?;
+    Ok(Response::new(UplIds { upl_ids }))
   }
-
-  type GetByLocationStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
 
   async fn get_by_location(
     &self,
     request: Request<ByLocationRequest>,
-  ) -> Result<Response<Self::GetByLocationStream>, Status> {
-    // Create channel for stream response
-    let (mut tx, rx) = tokio::sync::mpsc::channel(100);
-
-    // Get resources as Vec<SourceObject>
-    let res = self.get_by_location(request.into_inner()).await?;
-
-    // Send the result items through the channel
-    for sobject in res {
-      tx.send(Ok(sobject))
-        .await
-        .map_err(|_| Status::internal("Error while sending sources over channel"))?;
-    }
-
-    // Send back the receiver
-    Ok(Response::new(rx))
+  ) -> Result<Response<UplIds>, Status> {
+    let upl_ids = self.get_by_location(request.into_inner()).await?;
+    Ok(Response::new(UplIds { upl_ids }))
   }
 
   async fn set_best_before(
