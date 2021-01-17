@@ -1,4 +1,6 @@
+use async_stream::stream;
 use chrono::{DateTime, Utc};
+use futures::pin_mut;
 use futures_util::stream::StreamExt;
 use gzlib::proto::upl::upl_server::*;
 use gzlib::proto::upl::*;
@@ -407,18 +409,28 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
   async fn create_new_bulk(
     &self,
     request: Request<tonic::Streaming<UplNew>>,
-  ) -> Result<Response<()>, Status> {
+  ) -> Result<Response<UplIds>, Status> {
     let mut stream = request.into_inner();
 
-    let _ = async_stream::try_stream! {
+    let s = stream! {
         while let Some(new_upl) = stream.next().await {
           if let Ok(upl) = new_upl {
-            let _ = self.create_new(upl).await;
+            if let Ok(res) = self.create_new(upl).await {
+              yield res.id;
+            }
           }
         }
     };
 
-    Ok(Response::new(()))
+    pin_mut!(s);
+
+    let mut upl_ids: Vec<String> = Vec::new();
+
+    while let Some(value) = s.next().await {
+      upl_ids.push(value);
+    }
+
+    Ok(Response::new(UplIds { upl_ids }))
   }
 
   type GetBulkStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
