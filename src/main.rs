@@ -51,6 +51,7 @@ impl UplService {
         x if x == 0 => None,
         _ => Some(r.divisible_amount),
       },
+      r.is_opened,
       r.created_by,
     )
     .map_err(|e| ServiceError::bad_request(&e))?;

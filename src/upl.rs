@@ -22,6 +22,7 @@ where
     location: Location,
     best_before: Option<DateTime<Utc>>,
     divisible_amount: Option<u32>,
+    is_opened: bool,
     created_by: u32,
   ) -> Result<Self, String>;
   /// Get UPL ID ref
@@ -460,6 +461,7 @@ impl UplMethods for Upl {
     location: Location,
     best_before: Option<DateTime<Utc>>,
     divisible_amount: Option<u32>,
+    is_opened: bool,
     created_by: u32,
   ) -> Result<Self, String> {
     // Or just do the validation in higher level?
@@ -470,12 +472,19 @@ impl UplMethods for Upl {
         .luhn_check()
         .map_err(|_| "A megadott UPL ID nem valid!".to_string())?,
       product_id,
-      kind: match piece {
-        x if x > 1 => Kind::BulkSku {
+      kind: match is_opened {
+        true => Kind::OpenedSku {
           sku: sku,
-          upl_pieces: x,
+          amount: piece,
+          successors: Vec::new(),
         },
-        _ => Kind::Sku { sku: sku },
+        false => match piece {
+          x if x > 1 => Kind::BulkSku {
+            sku: sku,
+            upl_pieces: x,
+          },
+          _ => Kind::Sku { sku: sku },
+        },
       },
       procurement_id,
       procurement_net_price,
