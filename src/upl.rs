@@ -95,6 +95,8 @@ where
   /// for any reason
   /// Should be private and used only from the inventory service
   fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: u32) -> &Self;
+  /// Set divisible amount
+  fn set_divisible_amount(&mut self, divisible_amount: Option<u32>) -> Result<&Self, String>;
   /// Check whether the UPL is an un-opened original one or not
   fn is_original(&self) -> bool;
   /// Check if its a bulk UPL
@@ -1054,6 +1056,16 @@ impl UplMethods for Upl {
 
   fn get_upl_id(&self) -> &str {
     &self.id
+  }
+
+  fn set_divisible_amount(&mut self, divisible_amount: Option<u32>) -> Result<&Self, String> {
+    match self.kind {
+      Kind::Sku { sku: _ } => {
+        self.divisible_amount = divisible_amount;
+        Ok(self)
+      }
+      _ => Err("Csak egyedülálló, bontatlan UPL állítható be kimérésre".into()),
+    }
   }
 }
 

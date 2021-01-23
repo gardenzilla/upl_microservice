@@ -397,6 +397,24 @@ impl UplService {
     }
     Ok(())
   }
+
+  async fn set_divisible_amount(&self, r: SetDivisibleAmountRequest) -> ServiceResult<UplObj> {
+    let res = self
+      .upls
+      .lock()
+      .await
+      .find_id_mut(&r.upl)?
+      .as_mut()
+      .unpack()
+      .set_divisible_amount(match r.divisible_amount {
+        0 => None,
+        x => Some(x),
+      })
+      .map_err(|e| ServiceError::bad_request(&e))?
+      .clone()
+      .into();
+    Ok(res)
+  }
 }
 
 #[tonic::async_trait]
@@ -577,6 +595,14 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
   ) -> Result<Response<()>, Status> {
     let _ = self.close_inventory(request.into_inner()).await?;
     Ok(Response::new(()))
+  }
+
+  async fn set_divisible_amount(
+    &self,
+    request: Request<SetDivisibleAmountRequest>,
+  ) -> Result<Response<UplObj>, Status> {
+    let res = self.set_divisible_amount(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 }
 
