@@ -1058,7 +1058,7 @@ impl UplMethods for Upl {
     })
     // 4. Check has best before and if its still valid
     && (match self.best_before {
-      Some(best_before) => best_before.date() <= Utc::now().date(),
+      Some(best_before) => best_before.date() >= Utc::now().date(),
       None => true,
     })
   }
