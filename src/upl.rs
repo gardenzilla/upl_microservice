@@ -253,7 +253,7 @@ pub enum Location {
   // Upl is in a delivery
   Delivery(u32),
   // Upl is in a cart (closed purchase)
-  Cart(u32),
+  Cart(String),
   // Upl is missing and was moved to be discarded
   // but if its re-found
   Discard(u32),
@@ -322,7 +322,7 @@ pub enum Lock {
   // Cart lock means the given UPL is locked to a specific Cart
   // so it cannot move away, as its under a sales process.
   // Using when a UPL is in a Cart
-  Cart(u32),
+  Cart(String),
   // Apply Delivery Lock when the UPL is going to
   // be selected to a delivery between stocks.
   Delivery(u32),
@@ -553,9 +553,9 @@ impl UplMethods for Upl {
         // Or if it has no lock at all
         Lock::None => true,
       },
-      Location::Cart(id) => match self.lock {
+      Location::Cart(id) => match &self.lock {
         // Only if it has its own cart lock
-        Lock::Cart(_id) => *id == _id,
+        Lock::Cart(_id) => id == _id,
         Lock::Delivery(_) => false,
         Lock::Inventory(_) => false,
         // Or if it has no lock at all

@@ -98,21 +98,14 @@ impl UplService {
     &self,
     r: BySkuAndLocationRequest,
   ) -> ServiceResult<Vec<String>> {
-    let l: LocationKind = match LocationKind::from_i32(r.location_kind) {
-      Some(l) => l,
-      None => {
-        return Err(ServiceError::internal_error(
-          "A megadott UPL lokációs nem tudtuk azonosítani!",
-        ))
-      }
-    };
-
     // Determine location
-    let location: Location = match l {
-      LocationKind::Cart => Location::Cart(r.location_id),
-      LocationKind::Stock => Location::Stock(r.location_id),
-      LocationKind::Delivery => Location::Delivery(r.location_id),
-      LocationKind::Discard => Location::Discard(r.location_id),
+    let location: Location = match r.clone().location.ok_or(ServiceError::internal_error(
+      "Nem sikerült a UPL lokációt dekódolni",
+    ))? {
+      by_sku_and_location_request::Location::Stock(lid) => Location::Stock(lid),
+      by_sku_and_location_request::Location::Cart(lid) => Location::Cart(lid),
+      by_sku_and_location_request::Location::Delivery(lid) => Location::Delivery(lid),
+      by_sku_and_location_request::Location::Discard(lid) => Location::Discard(lid),
     };
 
     let res = self
@@ -131,21 +124,14 @@ impl UplService {
   }
 
   async fn get_by_location(&self, r: ByLocationRequest) -> ServiceResult<Vec<String>> {
-    let l: LocationKind = match LocationKind::from_i32(r.location_kind) {
-      Some(l) => l,
-      None => {
-        return Err(ServiceError::internal_error(
-          "A megadott UPL lokációs nem tudtuk azonosítani!",
-        ))
-      }
-    };
-
     // Determine location
-    let location: Location = match l {
-      LocationKind::Cart => Location::Cart(r.location_id),
-      LocationKind::Stock => Location::Stock(r.location_id),
-      LocationKind::Delivery => Location::Delivery(r.location_id),
-      LocationKind::Discard => Location::Discard(r.location_id),
+    let location: Location = match r.clone().location.ok_or(ServiceError::internal_error(
+      "Nem sikerült a UPL lokációt dekódolni",
+    ))? {
+      by_location_request::Location::Stock(lid) => Location::Stock(lid),
+      by_location_request::Location::Cart(lid) => Location::Cart(lid),
+      by_location_request::Location::Delivery(lid) => Location::Delivery(lid),
+      by_location_request::Location::Discard(lid) => Location::Discard(lid),
     };
 
     let res = self
@@ -379,12 +365,12 @@ impl UplService {
       .as_vec_mut()
       .into_iter()
       .for_each(|upl| {
-        if upl.unpack().get_lock() == &upl::Lock::Cart(r.cart_id) {
+        if upl.unpack().get_lock() == &upl::Lock::Cart(r.cart_id.clone()) {
           // todo! manage if result is error?
           let _ = upl
             .as_mut()
             .unpack()
-            .move_upl(upl::Location::Cart(r.cart_id), r.created_by);
+            .move_upl(upl::Location::Cart(r.cart_id.clone()), r.created_by);
         }
       });
     Ok(())
