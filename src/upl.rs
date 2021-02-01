@@ -810,8 +810,9 @@ impl UplMethods for Upl {
             // Update its kind to be a single Sku UPL
             // and copy the product and sku ids
             new_upl.kind = match piece {
+              x if x == 0 => return Err("Az új UPL mennyiség nem lehet 0!".to_string()),
               x if x == 1 => Kind::Sku { sku: sku },
-              x if x > 1 => Kind::BulkSku {
+              _ => Kind::BulkSku {
                 sku: sku,
                 upl_pieces: piece,
               },
