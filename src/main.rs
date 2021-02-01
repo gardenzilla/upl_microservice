@@ -181,7 +181,7 @@ impl UplService {
       .find_id_mut(&r.upl)?
       .as_mut()
       .unpack()
-      .split(r.new_upl, r.created_by)
+      .split(r.new_upl, r.piece, r.created_by)
       .map_err(|e| ServiceError::bad_request(&e))?;
 
     // Insert the new UPL

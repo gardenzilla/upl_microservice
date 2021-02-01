@@ -113,7 +113,7 @@ where
   /// ----------
   /// in a higher lever you must save the split UPL in the UPL store
   /// ID must be validated
-  fn split(&mut self, new_upl_id: String, created_by: u32) -> Result<Upl, String>;
+  fn split(&mut self, new_upl_id: String, piece: u32, created_by: u32) -> Result<Upl, String>;
   /// Split multiple UPLs from the bulk ones
   /// ----------
   /// IMPORTANT!
@@ -789,7 +789,7 @@ impl UplMethods for Upl {
     }
   }
 
-  fn split(&mut self, new_upl_id: String, created_by: u32) -> Result<Upl, String> {
+  fn split(&mut self, new_upl_id: String, piece: u32, created_by: u32) -> Result<Upl, String> {
     // Check if new upl id is valid Luhn
     new_upl_id
       .luhn_check_ref()
@@ -801,15 +801,21 @@ impl UplMethods for Upl {
         ref mut upl_pieces,
       } => {
         match upl_pieces {
-          // Check if we have more then 1 upls in bulk
-          &mut x if x > 1 => {
+          // Check if we have more then the requested piece in bulk
+          &mut x if x > piece => {
             // Decrease UPL bulk pieces by one
-            *upl_pieces -= 1;
+            *upl_pieces -= piece;
             // Clone itself as a new UPL
             let mut new_upl = self.clone();
             // Update its kind to be a single Sku UPL
             // and copy the product and sku ids
-            new_upl.kind = Kind::Sku { sku: sku };
+            new_upl.kind = match piece {
+              x if x == 1 => Kind::Sku { sku: sku },
+              x if x > 1 => Kind::BulkSku {
+                sku: sku,
+                upl_pieces: piece,
+              },
+            };
             // Set UPL history
             self.set_history(UplHistoryItem::new(
               CreatedBy::Uid(created_by),
@@ -842,7 +848,7 @@ impl UplMethods for Upl {
         new_upl_ids.into_iter().for_each(|id| {
           // We can use unwrap, as we already checked its a Bulk UPL
           // and only this can cause error
-          if let Ok(upl) = self.split(id, created_by.clone()) {
+          if let Ok(upl) = self.split(id, 1, created_by.clone()) {
             result.push(upl);
           }
         });
