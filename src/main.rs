@@ -110,6 +110,19 @@ impl UplService {
     Ok(res)
   }
 
+  async fn get_by_product(&self, r: ByProductRequest) -> ServiceResult<Vec<String>> {
+    let res = self
+      .upls
+      .lock()
+      .await
+      .iter()
+      .filter(|upl| upl.unpack().product_id == r.product_id)
+      .map(|upl| upl.unpack().id.clone())
+      .collect::<Vec<String>>();
+
+    Ok(res)
+  }
+
   async fn get_by_sku_and_location(
     &self,
     r: BySkuAndLocationRequest,
@@ -580,6 +593,23 @@ impl UplService {
     // Transform response from HashMap to Vec
     Ok(res.into_iter().map(|(_k, v)| v).collect())
   }
+
+  // Update product unit
+  async fn set_product_unit(&self, r: SetProductUnitRequest) -> ServiceResult<()> {
+    self
+      .upls
+      .lock()
+      .await
+      .as_vec_mut()
+      .into_iter()
+      .for_each(|upl| {
+        // Update all UPLs that related to the given PID
+        if upl.unpack().product_id == r.product_id {
+          let _ = upl.as_mut().unpack().set_product_unit(r.unit.clone());
+        }
+      });
+    Ok(())
+  }
 }
 
 #[tonic::async_trait]
@@ -654,6 +684,14 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
 
   async fn get_by_sku(&self, request: Request<BySkuRequest>) -> Result<Response<UplIds>, Status> {
     let upl_ids = self.get_by_sku(request.into_inner()).await?;
+    Ok(Response::new(UplIds { upl_ids }))
+  }
+
+  async fn get_by_product(
+    &self,
+    request: Request<ByProductRequest>,
+  ) -> Result<Response<UplIds>, Status> {
+    let upl_ids = self.get_by_product(request.into_inner()).await?;
     Ok(Response::new(UplIds { upl_ids }))
   }
 
@@ -807,6 +845,14 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
 
     // Send back the receiver
     Ok(Response::new(rx))
+  }
+
+  async fn set_product_unit(
+    &self,
+    request: Request<SetProductUnitRequest>,
+  ) -> Result<Response<()>, Status> {
+    let _ = self.set_product_unit(request.into_inner()).await?;
+    Ok(Response::new(()))
   }
 }
 
