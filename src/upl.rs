@@ -170,7 +170,7 @@ where
   /// Get net special price if there is any
   fn get_upl_special_price_net(&self) -> Option<u32>;
   /// Get net special margin if there is any
-  fn get_upl_special_price_margin(&self) -> Option<u32>;
+  fn get_upl_special_price_margin(&self) -> Option<i32>;
   /// Recalculate retail prices, procurement value and net margin
   fn recalculate_prices(&mut self);
   /// Try to open Kind Sku
@@ -403,7 +403,7 @@ pub struct Depreciation {
   // Can set if there is related depreciation_id
   pub net_retail_price: Option<u32>,
   // UPL net margin when we have special price
-  pub margin_net: Option<u32>,
+  pub margin_net: Option<i32>,
   // Related depreciation comment
   // if there any
   // From the sku scrap comment from the
@@ -422,7 +422,7 @@ impl Depreciation {
     }
   }
   /// Set depreciation price
-  pub fn set_price(&mut self, net_retail_price: Option<u32>, margin_net: Option<u32>) {
+  pub fn set_price(&mut self, net_retail_price: Option<u32>, margin_net: Option<i32>) {
     self.net_retail_price = net_retail_price;
     self.margin_net = margin_net;
   }
@@ -823,8 +823,8 @@ impl UplMethods for Upl {
     // Set depreciation price if there is deprecation already set
     if let Some(dep) = &mut self.depreciation {
       // Calculate margin for the given depreciation price
-      let margin: Option<u32> = match net_retail_price {
-        Some(discounted_price) => Some(discounted_price - self.procurement_net_price),
+      let margin: Option<i32> = match net_retail_price {
+        Some(discounted_price) => Some(discounted_price as i32 - self.procurement_net_price as i32),
         None => None,
       };
       // Set depreciation price
@@ -941,6 +941,8 @@ impl UplMethods for Upl {
             *upl_pieces -= piece;
             // Clone itself as a new UPL
             let mut new_upl = self.clone();
+            // Set new ID
+            new_upl.id = new_upl_id.clone();
             // Update its kind to be a single Sku UPL
             // and copy the product and sku ids
             new_upl.kind = match piece {
@@ -1397,7 +1399,7 @@ impl UplMethods for Upl {
     }
   }
 
-  fn get_upl_special_price_margin(&self) -> Option<u32> {
+  fn get_upl_special_price_margin(&self) -> Option<i32> {
     match &self.depreciation {
       Some(d) => d.margin_net,
       None => None,
