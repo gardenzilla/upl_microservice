@@ -88,6 +88,7 @@ impl From<Kind> for upl_obj::Kind {
       }),
       Kind::DerivedProduct {
         derived_from,
+        derived_from_sku: _,
         amount,
       } => Self::DerivedProduct(upl_obj::KindDerivedProduct {
         derived_from,
@@ -124,6 +125,8 @@ impl From<Upl> for gzlib::proto::upl::UplObj {
     Self {
       id: upl.id.clone(),
       product_id: upl.product_id,
+      sku_id: upl.get_sku(),
+      product_unit: upl.product_unit.clone(),
       upl_piece: upl.get_upl_piece(),
       is_healty: upl.is_available_healthy(),
       best_before: match upl.best_before {
@@ -134,20 +137,34 @@ impl From<Upl> for gzlib::proto::upl::UplObj {
         Some(dp) => Some(upl_obj::Depreciation {
           depreciation_id: dp.depreciation_id,
           depreciation_comment: dp.comment.clone(),
-          depreciation_net_price: dp.net_retail_price.unwrap_or(0),
         }),
         None => None,
       },
       procurement_id: upl.procurement_id,
       procurement_net_price: upl.procurement_net_price,
+      procurement_net_price_sku: upl.procurement_net_price_sku,
       is_divisible: upl.is_divisible(),
-      divisible_amount: upl.get_divisible_amount().unwrap_or(0),
+      sku_divisible_amount: upl.get_divisible_amount().unwrap_or(0),
+      kind: Some(upl.kind.clone().into()),
+      lock: Some(upl.lock.clone().into()),
+      location: Some(upl.location.clone().into()),
+      has_special_price: upl.get_upl_has_special_price(),
+      price_net: match upl.get_upl_special_price_net() {
+        Some(spn) => spn,
+        None => upl.price_net,
+      },
+      vat: upl.vat.to_string(),
+      price_gross: match upl.get_upl_special_price_net() {
+        Some(spn) => spn * upl.vat,
+        None => upl.price_gross,
+      },
+      margin_net: match upl.get_upl_special_price_margin() {
+        Some(sm) => sm,
+        None => upl.margin_net,
+      },
       is_archived: false,
       created_by: upl.created_by,
       created_at: upl.created_at.to_rfc3339(),
-      kind: Some(upl.kind.into()),
-      lock: Some(upl.lock.into()),
-      location: Some(upl.location.into()),
     }
   }
 }

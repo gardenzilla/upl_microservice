@@ -1,3 +1,5 @@
+use std::ops::Mul;
+
 use chrono::prelude::*;
 use gzlib::id::LuhnCheck;
 use packman::VecPackMember;
@@ -15,13 +17,17 @@ where
   fn new(
     upl_id: String,
     product_id: u32,
+    product_unit: String,
     sku: u32,
     piece: u32,
+    sku_divisible_amount: u32,
+    sku_divisible: bool,
+    sku_net_price: u32,
+    sku_vat: VAT,
     procurement_id: u32,
-    procurement_net_price: u32,
+    sku_procurement_net_price: u32,
     location: Location,
     best_before: Option<DateTime<Utc>>,
-    divisible_amount: Option<u32>,
     is_opened: bool,
     created_by: u32,
   ) -> Result<Self, String>;
@@ -30,7 +36,7 @@ where
   /// Get related product ID
   fn get_product_id(&self) -> u32;
   /// Get related SKU ID
-  fn get_sku(&self) -> Option<u32>;
+  fn get_sku(&self) -> u32;
   /// Get UPL Kind ref
   fn get_kind(&self) -> &Kind;
   /// Get UPL procurement ID ref
@@ -63,6 +69,8 @@ where
   fn unlock(&mut self, lock: Lock, created_by: u32) -> Result<&Self, String>;
   /// Unlock UPL anyway
   fn unlock_forced(&mut self) -> &Self;
+  /// Try to set new price to UPL
+  fn set_price(&mut self, sku_net_price: u32, sku_vat: VAT) -> Result<&Self, String>;
   /// Set depreciation
   /// Should be limited to the inventory service
   fn set_depreciation(
@@ -96,8 +104,6 @@ where
   /// for any reason
   /// Should be private and used only from the inventory service
   fn set_best_before(&mut self, best_before: Option<DateTime<Utc>>, created_by: u32) -> &Self;
-  /// Set divisible amount
-  fn set_divisible_amount(&mut self, divisible_amount: Option<u32>) -> Result<&Self, String>;
   /// Check whether the UPL is an un-opened original one or not
   fn is_original(&self) -> bool;
   /// Check if its a bulk UPL
@@ -138,7 +144,7 @@ where
   /// Try to merge a source and a derived UPL into together
   /// When for any reason we want to put back a derived UPL into
   /// its ancestor
-  // fn merge(&mut self, upl_to_destroy: Upl, created_by: u32) -> Result<&Upl, String>;
+  fn merge(&mut self, upl_to_destroy: Upl, created_by: u32) -> Result<&Upl, String>;
 
   /// Check whether this UPL is divisible or not
   fn is_divisible(&self) -> bool;
@@ -153,6 +159,28 @@ where
   fn get_created_at(&self) -> DateTime<Utc>;
   /// Get UPL object created by value (user id)
   fn get_created_by(&self) -> u32;
+  /// Get UPL net_price
+  fn get_upl_net_price(&self) -> u32;
+  /// Get UPL vat
+  fn get_upl_gross_price(&self) -> u32;
+  /// Get UPL gross price
+  fn get_upl_vat(&self) -> VAT;
+  /// Get UPL has special price
+  fn get_upl_has_special_price(&self) -> bool;
+  /// Get net special price if there is any
+  fn get_upl_special_price_net(&self) -> Option<u32>;
+  /// Get net special margin if there is any
+  fn get_upl_special_price_margin(&self) -> Option<u32>;
+  /// Recalculate retail prices, procurement value and net margin
+  fn recalculate_prices(&mut self);
+  /// Try to open Kind Sku
+  fn open(&mut self) -> Result<&Upl, String>;
+  /// Try to close Kind OpenedSku
+  fn close(&mut self) -> Result<&Upl, String>;
+  /// Set UPL to be divisible based on its SKU
+  fn set_divisible(&mut self, divisible: bool) -> &Self;
+  /// Set Product unit
+  fn set_product_unit(&mut self, unit: String) -> &Self;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -304,6 +332,8 @@ pub enum Kind {
   DerivedProduct {
     // Derived from this UPL
     derived_from: String,
+    // Derived from this SKU
+    derived_from_sku: u32,
     // Amount in the products unit
     amount: u32,
   },
@@ -372,6 +402,8 @@ pub struct Depreciation {
   // if there any.
   // Can set if there is related depreciation_id
   pub net_retail_price: Option<u32>,
+  // UPL net margin when we have special price
+  pub margin_net: Option<u32>,
   // Related depreciation comment
   // if there any
   // From the sku scrap comment from the
@@ -381,16 +413,80 @@ pub struct Depreciation {
 
 impl Depreciation {
   /// Create a new depreciation object
-  pub fn new(depreciation_id: u32, net_retail_price: Option<u32>, comment: String) -> Self {
+  pub fn new(depreciation_id: u32, comment: String) -> Self {
     Self {
       depreciation_id,
-      net_retail_price,
+      net_retail_price: None,
+      margin_net: None,
       comment,
     }
   }
   /// Set depreciation price
-  pub fn set_price(&mut self, net_retail_price: Option<u32>) {
+  pub fn set_price(&mut self, net_retail_price: Option<u32>, margin_net: Option<u32>) {
     self.net_retail_price = net_retail_price;
+    self.margin_net = margin_net;
+  }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Copy)]
+pub enum VAT {
+  AAM,
+  FAD,
+  TAM,
+  _5,
+  _18,
+  _27,
+}
+
+impl Default for VAT {
+  fn default() -> Self {
+    VAT::_27
+  }
+}
+
+impl VAT {
+  pub fn from_str(str: &str) -> Result<VAT, String> {
+    match str {
+      "AAM" => Ok(VAT::AAM),
+      "aam" => Ok(VAT::AAM),
+      "FAD" => Ok(VAT::FAD),
+      "fad" => Ok(VAT::FAD),
+      "TAM" => Ok(VAT::TAM),
+      "tam" => Ok(VAT::TAM),
+      "5" => Ok(VAT::_5),
+      "18" => Ok(VAT::_18),
+      "27" => Ok(VAT::_27),
+      _ => Err("Nem megfelelő Áfa formátum! 5, 18, 27, AAM, TAM, FAD".into()),
+    }
+  }
+}
+
+impl ToString for VAT {
+  fn to_string(&self) -> String {
+    match self {
+      VAT::AAM => "AAM".to_string(),
+      VAT::FAD => "FAD".to_string(),
+      VAT::TAM => "TAM".to_string(),
+      VAT::_5 => "5".to_string(),
+      VAT::_18 => "18".to_string(),
+      VAT::_27 => "27".to_string(),
+    }
+  }
+}
+
+impl Mul<VAT> for u32 {
+  type Output = u32;
+
+  fn mul(self, rhs: VAT) -> Self::Output {
+    let res = match rhs {
+      VAT::AAM => self as f32 * 1.0,
+      VAT::FAD => self as f32 * 1.0,
+      VAT::TAM => self as f32 * 1.0,
+      VAT::_5 => self as f32 * 1.05,
+      VAT::_18 => self as f32 * 1.18,
+      VAT::_27 => self as f32 * 1.27,
+    };
+    res.round() as u32
   }
 }
 
@@ -401,6 +497,10 @@ pub struct Upl {
   pub id: String,
   // Related product ID
   pub product_id: u32,
+  // 1 if its not divisible
+  pub sku_divisible_amount: u32,
+  // Related Product unit
+  pub product_unit: String,
   // UPL Kind
   // Single or Bulk(u32)
   // Single means its a single UPL,
@@ -412,8 +512,12 @@ pub struct Upl {
   // Net wholesale price in which
   // this item was purchased by us
   pub procurement_net_price: u32,
+  // SKU original procurement price
+  pub procurement_net_price_sku: u32,
+  // Total net margin for this UPL
+  pub margin_net: u32,
   // Current UPL location
-  pub location: Location, // todo? this way?
+  pub location: Location,
   // todo! Not NOW!
   // todo! Implement => location_history: Vec<Location>,
   // Depreciation
@@ -423,19 +527,16 @@ pub struct Upl {
   // Optional, but when we have one, we use
   // DateTime<Utc>
   pub best_before: Option<DateTime<Utc>>,
-  // Product quantity
-  // It contains Simple or Complex quantity
-  // Or when a Simple product - which is divisible -
-  // is divided, it contains the remained quantity.
-  // Inherited from Product(service), but after
-  // become Partial(u32), it's going to be managed
-  // here without responding the related Product changes.
-  // --
-  // Only some, if Sku can be divided, and its unopened.
-  // Once its opened, this amount will be none, and its
-  // value is moved to its kind component
-  // This value represents the SKU original divisible quantity
-  pub divisible_amount: Option<u32>,
+  // SKU is divisible or not
+  pub sku_divisible: bool,
+  // Stored sku net price
+  pub sku_price_net: u32,
+  // Net retail price
+  pub price_net: u32,
+  // SKU VAT
+  pub vat: VAT,
+  // Gross retail price
+  pub price_gross: u32,
   // Lock enum
   // When a UPL is locked by any reason,
   // that UPL cannot be updated.
@@ -454,19 +555,22 @@ impl UplMethods for Upl {
   fn new(
     upl_id: String,
     product_id: u32,
+    product_unit: String,
     sku: u32,
     piece: u32,
+    sku_divisible_amount: u32,
+    sku_divisible: bool,
+    sku_price_net: u32,
+    sku_vat: VAT,
     procurement_id: u32,
-    procurement_net_price: u32,
+    procurement_net_price_sku: u32,
     location: Location,
     best_before: Option<DateTime<Utc>>,
-    divisible_amount: Option<u32>,
     is_opened: bool,
     created_by: u32,
   ) -> Result<Self, String> {
-    // Or just do the validation in higher level?
-    // Just do the validation and the duplicate check
-    Ok(Self {
+    // Create new UPL
+    let mut upl = Self {
       // Check if ID is Luhn valid
       id: upl_id
         .luhn_check()
@@ -486,12 +590,13 @@ impl UplMethods for Upl {
           _ => Kind::Sku { sku: sku },
         },
       },
+      product_unit,
       procurement_id,
-      procurement_net_price,
+      procurement_net_price: 0,
+      procurement_net_price_sku,
       location,
       depreciation: None,
       best_before,
-      divisible_amount,
       lock: Lock::None,
       // Init history vector with UplHistoryEvent::Created
       history: vec![UplHistoryItem::new(
@@ -500,26 +605,40 @@ impl UplMethods for Upl {
       )],
       created_at: Utc::now(),
       created_by,
-    })
+      sku_divisible_amount,
+      margin_net: 0,
+      sku_divisible,
+      sku_price_net,
+      price_net: 0,
+      vat: sku_vat,
+      price_gross: 0,
+    };
+
+    // Set prices
+    upl.recalculate_prices();
+
+    // Return new UPL
+    Ok(upl)
   }
 
   fn get_product_id(&self) -> u32 {
     self.product_id
   }
 
-  fn get_sku(&self) -> Option<u32> {
+  fn get_sku(&self) -> u32 {
     match self.kind {
-      Kind::Sku { sku } => Some(sku),
-      Kind::BulkSku { sku, upl_pieces: _ } => Some(sku),
+      Kind::Sku { sku } => sku,
+      Kind::BulkSku { sku, upl_pieces: _ } => sku,
       Kind::OpenedSku {
         sku,
         amount: _,
         successors: _,
-      } => Some(sku),
+      } => sku,
       Kind::DerivedProduct {
         derived_from: _,
+        derived_from_sku,
         amount: _,
-      } => None,
+      } => derived_from_sku,
     }
   }
 
@@ -670,7 +789,7 @@ impl UplMethods for Upl {
     }
 
     // Set depreciation
-    self.depreciation = Some(Depreciation::new(depreciation_id, None, comment.clone()));
+    self.depreciation = Some(Depreciation::new(depreciation_id, comment.clone()));
 
     // Set UPL history
     self.set_history(UplHistoryItem::new(
@@ -703,7 +822,13 @@ impl UplMethods for Upl {
   ) -> Result<&Self, String> {
     // Set depreciation price if there is deprecation already set
     if let Some(dep) = &mut self.depreciation {
-      dep.set_price(net_retail_price);
+      // Calculate margin for the given depreciation price
+      let margin: Option<u32> = match net_retail_price {
+        Some(discounted_price) => Some(discounted_price - self.procurement_net_price),
+        None => None,
+      };
+      // Set depreciation price
+      dep.set_price(net_retail_price, margin);
     } else {
       return Err("UPL is not depreciated!".to_string());
     }
@@ -790,6 +915,15 @@ impl UplMethods for Upl {
   }
 
   fn split(&mut self, new_upl_id: String, piece: u32, created_by: u32) -> Result<Upl, String> {
+    // Check piece
+    if piece == 0 {
+      return Err("Az új UPL mennyiség nem lehet 0!".to_string());
+    }
+
+    if self.has_lock() {
+      return Err("A termékből nem tudunk leválasztani, mivel zárolva van!".to_string());
+    }
+
     // Check if new upl id is valid Luhn
     new_upl_id
       .luhn_check_ref()
@@ -822,10 +956,17 @@ impl UplMethods for Upl {
               CreatedBy::Uid(created_by),
               UplHistoryEvent::Split { new_upl_id },
             ));
+
+            // Recalculate parent prices
+            self.recalculate_prices();
+
+            // Recalculate child prices
+            new_upl.recalculate_prices();
+
             // Return the new UPL
             Ok(new_upl)
           }
-          _ => Err("A UPL csak 1 db-ot tartalmaz! Nem lehet tovább bontani!".to_string()),
+          _ => Err("A gyüjtő mérete nem nagyobb, mint a kért mennyiség!".to_string()),
         }
       }
       _ => Err("Az adott UPL-t nem lehet szét választani, nem tömeges UPL!".into()),
@@ -838,6 +979,10 @@ impl UplMethods for Upl {
       if id.luhn_check_ref().is_err() {
         return Err(format!("Az alábbi új UPL ID invalid! {}", id));
       }
+    }
+
+    if self.has_lock() {
+      return Err("A termékből nem tudunk szétválasztani, mivel zárolva van!".to_string());
     }
 
     match self.kind {
@@ -859,77 +1004,87 @@ impl UplMethods for Upl {
     }
   }
 
+  fn open(&mut self) -> Result<&Upl, String> {
+    if !self.is_divisible() {
+      return Err(
+        "A kért UPL nem mérhető ki, így nem bontható meg!
+        Vagy nem kimérhető a SKU, vagy a kimérhető mennyiség 1, ami nem elgendő."
+          .to_string(),
+      );
+    }
+
+    if self.has_lock() {
+      return Err("A terméket nem tudjuk megnyitni, mivel zárolva van!".to_string());
+    }
+
+    match &self.get_divisible_amount() {
+      Some(_) => (),
+      None => return Err("A megadott SKU nem mérhető ki!".into()),
+    };
+
+    match &mut self.kind {
+      Kind::Sku { sku } => {
+        // We change the UPL kind to be OpenedSku
+        // and fill it with the previous data
+        self.kind = Kind::OpenedSku {
+          sku: *sku,
+          amount: self.sku_divisible_amount,
+          successors: Vec::new(),
+        };
+
+        // Return self ref
+        Ok(self)
+      }
+      _ => Err("A kért terméket nem lehet megbontani, mert vagy gyüjtő, vagy már bontott.".into()),
+    }
+  }
+
+  fn close(&mut self) -> Result<&Upl, String> {
+    if self.has_lock() {
+      return Err("A terméket nem tudjuk lezárni, mivel zárolva van!".to_string());
+    }
+
+    match &mut self.kind {
+      Kind::OpenedSku {
+        sku,
+        amount,
+        successors: _,
+      } => {
+        // Check if its original
+        if *amount != self.sku_divisible_amount {
+          return Err("A termékből már kimértek, így nem zárható vissza.".to_string());
+        }
+        // Set Kind::Sku again
+        self.kind = Kind::Sku { sku: *sku };
+
+        // Return self ref
+        Ok(self)
+      }
+      _ => Err("A kért nem bontott termék, így nem lehet vissza zárni.".into()),
+    }
+  }
+
   fn divide(
     &mut self,
     new_upl_id: String,
     requested_amount: u32,
     created_by: u32,
   ) -> Result<Upl, String> {
+    // Check piece
+    if requested_amount == 0 {
+      return Err("Nem lehet 0 egységet kimérni!".to_string());
+    }
+
+    if self.has_lock() {
+      return Err("A termékből nem tudunk kimérni, mivel zárolva van!".to_string());
+    }
+
     // Check new_upl_id is valid Luhn
     new_upl_id
       .luhn_check_ref()
       .map_err(|_| "Az új UPL id invalid!".to_string())?;
 
     match &mut self.kind {
-      Kind::Sku { sku } => {
-        let amount = match self.divisible_amount {
-          Some(a) => a,
-          None => return Err("A megadott SKU nem mérhető ki!".into()),
-        };
-
-        // Check if there is enough amount inside this UPL
-        if amount <= requested_amount {
-          return Err(
-            "Túl nagy a kimérendő mennyiség! A termék kisebb, mint a kért mennyiség.".into(),
-          );
-        }
-
-        // We change the UPL kind to be OpenedSku
-        // and fill it with the previous data
-        self.kind = Kind::OpenedSku {
-          sku: *sku,
-          amount: amount - requested_amount,
-          successors: vec![new_upl_id.clone()],
-        };
-
-        // We reset the divisible amount field
-        self.divisible_amount = None;
-
-        // Clone itself
-        let mut new_upl = self.clone();
-
-        // Set new ID
-        new_upl.id = new_upl_id.clone();
-
-        // Set created by
-        new_upl.created_by = created_by.clone();
-
-        // Set created at
-        new_upl.created_at = Utc::now();
-
-        // Set the new UPLs kind to be a derived product
-        new_upl.kind = Kind::DerivedProduct {
-          derived_from: self.id.clone(),
-          amount: requested_amount,
-        };
-
-        // Set UPL history
-        self.set_history(UplHistoryItem::new(
-          CreatedBy::Uid(created_by),
-          UplHistoryEvent::Divided {
-            new_upl_id,
-            requested_amount,
-          },
-        ));
-
-        // Return the new UPL
-        Ok(new_upl)
-      }
-      // We cannot divide a bulk UPL
-      Kind::BulkSku {
-        sku: _,
-        upl_pieces: _,
-      } => Err("A kért termék nem osztható! Előbb válassza szét őket!".into()),
       Kind::OpenedSku {
         sku: _,
         ref mut amount,
@@ -961,28 +1116,72 @@ impl UplMethods for Upl {
         // Set the new UPLs kind to be a derived product
         new_upl.kind = Kind::DerivedProduct {
           derived_from: self.id.clone(),
+          derived_from_sku: self.get_sku(),
           amount: requested_amount,
         };
+
+        // Recalculate parent prices
+        self.recalculate_prices();
+
+        // Recalculate child prices
+        new_upl.recalculate_prices();
 
         // Return the new UPL
         Ok(new_upl)
       }
       // We cannot divide a derived UPL
-      Kind::DerivedProduct {
-        derived_from: _,
-        amount: _,
-      } => Err("A kért termék egy kimért termék, amiből nem tudunk többet kimérni.".into()),
+      _ => Err("A kért termék nem mérhető ki! Csak bontott termék mérhető ki!".into()),
     }
   }
 
-  // fn merge(&mut self, upl: Upl, by: String) -> Result<&Upl, String> {
-  //   // TODO! Implement this!
-  //   todo!()
-  // }
+  fn merge(&mut self, upl_to_merge: Upl, _by: u32) -> Result<&Upl, String> {
+    if self.is_depreciated() {
+      return Err(
+        "A szülő UPL selejtezett. Selejtezett termékbe nem tudunk vissza tenni".to_string(),
+      );
+    }
+
+    if self.has_lock() {
+      return Err("Nem tehetjük vissza a terméket, mert a szülő termék zárolva van!".to_string());
+    }
+
+    if upl_to_merge.has_lock() {
+      return Err("Nem tehetjük vissza a terméket, mert az zárolva van!".to_string());
+    }
+    // Try merge back
+    // and calculate new amount, prices, procurement value and margin
+    // Don't forget to remove the merged UPL from Upl DB
+    match &mut self.kind {
+      Kind::OpenedSku {
+        sku: _,
+        amount: ref mut amount_parent,
+        successors: _,
+      } => match &upl_to_merge.kind {
+        Kind::DerivedProduct {
+          derived_from,
+          derived_from_sku: _,
+          amount: child_amount,
+        } => {
+          if &self.id != derived_from {
+            return Err("A kért UPL nem tehető vissza másik szülőbe!".to_string());
+          }
+          // Put back the required amount
+          *amount_parent = *amount_parent + *child_amount;
+          // Recalculate prices, margin + procurement net value
+          self.recalculate_prices();
+          // Return self as ref
+          return Ok(self);
+        }
+        _ => return Err("A kért UPL nem kimért UPL, nem tehető vissza!".to_string()),
+      },
+      _ => return Err("A cél UPL nem nyitott termék!".to_string()),
+    }
+  }
 
   fn is_divisible(&self) -> bool {
     match &self.kind {
-      Kind::Sku { sku: _ } => self.divisible_amount.is_some(),
+      // Only true if sku_divisible AND divisible amount > 1
+      Kind::Sku { sku: _ } => (self.sku_divisible_amount > 1) && self.sku_divisible,
       Kind::BulkSku {
         sku: _,
         upl_pieces: _,
@@ -994,6 +1193,7 @@ impl UplMethods for Upl {
       } => *amount > 1,
       Kind::DerivedProduct {
         derived_from: _,
+        derived_from_sku: _,
         amount: _,
       } => false,
     }
@@ -1001,7 +1201,7 @@ impl UplMethods for Upl {
 
   fn get_divisible_amount(&self) -> Option<u32> {
     match &self.kind {
-      Kind::Sku { sku: _ } => self.divisible_amount,
+      Kind::Sku { sku: _ } => Some(self.sku_divisible_amount),
       Kind::BulkSku {
         sku: _,
         upl_pieces: _,
@@ -1013,6 +1213,7 @@ impl UplMethods for Upl {
       } => Some(*amount),
       Kind::DerivedProduct {
         derived_from: _,
+        derived_from_sku: _,
         amount: _,
       } => None,
     }
@@ -1074,13 +1275,128 @@ impl UplMethods for Upl {
     &self.id
   }
 
-  fn set_divisible_amount(&mut self, divisible_amount: Option<u32>) -> Result<&Self, String> {
+  fn set_price(&mut self, sku_net_price: u32, sku_vat: VAT) -> Result<&Self, String> {
+    // Store SKU net price
+    self.sku_price_net = sku_net_price;
+    // Store new VAT
+    self.vat = sku_vat;
+    // Recalculate prices
+    self.recalculate_prices();
+    // Return self as ref
+    Ok(self)
+  }
+
+  fn get_upl_net_price(&self) -> u32 {
+    match &self.depreciation {
+      Some(d) => match d.net_retail_price {
+        Some(dp) => dp,
+        None => self.price_net,
+      },
+      None => self.price_net,
+    }
+  }
+
+  fn get_upl_gross_price(&self) -> u32 {
+    match &self.depreciation {
+      Some(d) => match d.net_retail_price {
+        Some(dp) => dp * self.vat,
+        None => self.price_gross,
+      },
+      None => self.price_gross,
+    }
+  }
+
+  fn get_upl_vat(&self) -> VAT {
+    self.vat
+  }
+
+  fn get_upl_has_special_price(&self) -> bool {
+    match &self.depreciation {
+      Some(d) => d.net_retail_price.is_some(),
+      None => false,
+    }
+  }
+
+  fn recalculate_prices(&mut self) {
     match self.kind {
+      // Set price for a normal SKU UPL
       Kind::Sku { sku: _ } => {
-        self.divisible_amount = divisible_amount;
-        Ok(self)
+        // Set net retail price
+        self.price_net = self.sku_price_net;
+        // Set gross retail price
+        self.price_gross = self.sku_price_net * self.vat;
       }
-      _ => Err("Csak egyedülálló, bontatlan UPL állítható be kimérésre".into()),
+      // Set price for a normal BulkSku UPL
+      Kind::BulkSku {
+        sku: _,
+        upl_pieces: _,
+      } => {
+        // Set net retail price
+        self.price_net = self.sku_price_net;
+        // Set gross retail price
+        self.price_gross = self.sku_price_net * self.vat;
+      }
+      // Set price for an opened SKU
+      Kind::OpenedSku {
+        sku: _,
+        amount,
+        successors: _,
+      } => {
+        // Calculate unit net price
+        let unit_net_price = self.sku_price_net as f32 / self.sku_divisible_amount as f32;
+        // Reset UPL retail net price based on its amount
+        self.price_net = (amount as f32 * unit_net_price).round() as u32;
+        // Reset UPL retail gross price based on its amount
+        self.price_gross = self.price_net * self.vat;
+        // Calculate unit procurement value
+        let unit_procurement_value =
+          self.procurement_net_price_sku as f32 / self.sku_divisible_amount as f32;
+        // Set new procurement value
+        self.procurement_net_price = (amount as f32 * unit_procurement_value).round() as u32;
+      }
+      Kind::DerivedProduct {
+        derived_from: _,
+        derived_from_sku: _,
+        amount,
+      } => {
+        // Calculate unit net price
+        let unit_net_price = self.sku_price_net as f32 / self.sku_divisible_amount as f32;
+        // Reset UPL retail net price based on its amount
+        self.price_net = (amount as f32 * unit_net_price).round() as u32;
+        // Reset UPL retail gross price based on its amount
+        self.price_gross = self.price_net * self.vat;
+        // Calculate unit procurement value
+        let unit_procurement_value =
+          self.procurement_net_price_sku as f32 / self.sku_divisible_amount as f32;
+        // Set new procurement value
+        self.procurement_net_price = (amount as f32 * unit_procurement_value).round() as u32;
+      }
+    }
+    // Set margin
+    self.margin_net = self.price_net - self.procurement_net_price;
+  }
+
+  fn set_divisible(&mut self, divisible: bool) -> &Self {
+    self.sku_divisible = divisible;
+    self
+  }
+
+  fn set_product_unit(&mut self, unit: String) -> &Self {
+    self.product_unit = unit;
+    self
+  }
+
+  fn get_upl_special_price_net(&self) -> Option<u32> {
+    match &self.depreciation {
+      Some(d) => d.net_retail_price,
+      None => None,
+    }
+  }
+
+  fn get_upl_special_price_margin(&self) -> Option<u32> {
+    match &self.depreciation {
+      Some(d) => d.margin_net,
+      None => None,
     }
   }
 }
@@ -1090,17 +1406,25 @@ impl Default for Upl {
     Self {
       id: "".to_string(),
       product_id: 0,
+      product_unit: String::default(),
       kind: Kind::default(),
       procurement_id: 0,
       procurement_net_price: 0,
       location: Location::default(),
       depreciation: None,
       best_before: None,
-      divisible_amount: None,
+      sku_divisible_amount: 1,
       lock: Lock::default(),
       history: Vec::new(),
       created_at: Utc::now(),
       created_by: 0,
+      procurement_net_price_sku: 0,
+      margin_net: 0,
+      price_net: 0,
+      vat: VAT::default(),
+      price_gross: 0,
+      sku_divisible: false,
+      sku_price_net: 0,
     }
   }
 }
