@@ -1,0 +1,2 @@
+This folder contains migration helper files to migrate UPL objects to the new scheme.
+For that we need to load Pices, Products and SKUs as well.
