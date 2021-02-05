@@ -515,7 +515,7 @@ pub struct Upl {
   // SKU original procurement price
   pub procurement_net_price_sku: u32,
   // Total net margin for this UPL
-  pub margin_net: u32,
+  pub margin_net: i32,
   // Current UPL location
   pub location: Location,
   // todo! Not NOW!
@@ -1325,6 +1325,8 @@ impl UplMethods for Upl {
         self.price_net = self.sku_price_net;
         // Set gross retail price
         self.price_gross = self.sku_price_net * self.vat;
+        // Set procurement price
+        self.procurement_net_price = self.procurement_net_price_sku;
       }
       // Set price for a normal BulkSku UPL
       Kind::BulkSku {
@@ -1335,6 +1337,8 @@ impl UplMethods for Upl {
         self.price_net = self.sku_price_net;
         // Set gross retail price
         self.price_gross = self.sku_price_net * self.vat;
+        // Set procurement price
+        self.procurement_net_price = self.procurement_net_price_sku;
       }
       // Set price for an opened SKU
       Kind::OpenedSku {
@@ -1373,7 +1377,7 @@ impl UplMethods for Upl {
       }
     }
     // Set margin
-    self.margin_net = self.price_net - self.procurement_net_price;
+    self.margin_net = self.price_net as i32 - self.procurement_net_price as i32;
   }
 
   fn set_divisible(&mut self, divisible: bool) -> &Self {
