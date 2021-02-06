@@ -151,6 +151,8 @@ where
   /// If the UPL is divisible,
   /// returns the remaining amount that can be divide
   fn get_divisible_amount(&self) -> Option<u32>;
+  /// Get SKU divisible amount
+  fn get_sku_divisible_amount(&self) -> u32;
   /// Get UPL history
   fn get_history(&self) -> &Vec<UplHistoryItem>;
   /// Set UPL history event
@@ -1219,6 +1221,10 @@ impl UplMethods for Upl {
         amount: _,
       } => None,
     }
+  }
+
+  fn get_sku_divisible_amount(&self) -> u32 {
+    self.sku_divisible_amount
   }
 
   fn get_history(&self) -> &Vec<UplHistoryItem> {

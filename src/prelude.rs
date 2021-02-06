@@ -144,7 +144,7 @@ impl From<Upl> for gzlib::proto::upl::UplObj {
       procurement_net_price: upl.procurement_net_price,
       procurement_net_price_sku: upl.procurement_net_price_sku,
       is_divisible: upl.is_divisible(),
-      sku_divisible_amount: upl.get_divisible_amount().unwrap_or(0),
+      sku_divisible_amount: upl.get_sku_divisible_amount(),
       kind: Some(upl.kind.clone().into()),
       lock: Some(upl.lock.clone().into()),
       location: Some(upl.location.clone().into()),
