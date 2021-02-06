@@ -537,12 +537,36 @@ impl UplService {
             let stock_info = res.stocks.entry(*stock_id).or_insert(StockInfo {
               total: 0,
               healthy: 0,
+              bulk: 0,
+              opened: 0,
             });
             // Increment total count
             (*stock_info).total += _upl.get_upl_piece();
             // If its healthy then increment healthy count
             if _upl.is_available_healthy() {
               (*stock_info).healthy += _upl.get_upl_piece();
+            }
+            // Check for bulk and opened product location info
+            match _upl.get_kind() {
+              // If single SKU, dont do anything
+              upl::Kind::Sku { sku: _ } => (),
+              // If bulk sku, then increase bulk by its pieces
+              upl::Kind::BulkSku {
+                sku: _,
+                upl_pieces: _,
+              } => (*stock_info).bulk += _upl.get_upl_piece(),
+              // If OpenedSku, then increase opened count by 1
+              upl::Kind::OpenedSku {
+                sku: _,
+                amount: _,
+                successors: _,
+              } => (*stock_info).opened += _upl.get_upl_piece(),
+              // If derived product, then increase opened count by 1
+              upl::Kind::DerivedProduct {
+                derived_from: _,
+                derived_from_sku: _,
+                amount: _,
+              } => (*stock_info).opened += _upl.get_upl_piece(),
             }
           }
           _ => (),
@@ -575,6 +599,8 @@ impl UplService {
             let stock_info = location_info.stocks.entry(*stock_id).or_insert(StockInfo {
               total: 0,
               healthy: 0,
+              bulk: 0,
+              opened: 0,
             });
 
             // Increment total count
@@ -583,6 +609,29 @@ impl UplService {
             // If its healthy then increment healthy count
             if _upl.is_available_healthy() {
               (*stock_info).healthy += _upl.get_upl_piece();
+            }
+
+            // Check for bulk and opened product location info
+            match _upl.get_kind() {
+              // If single SKU, dont do anything
+              upl::Kind::Sku { sku: _ } => (),
+              // If bulk sku, then increase bulk by its pieces
+              upl::Kind::BulkSku {
+                sku: _,
+                upl_pieces: _,
+              } => (*stock_info).bulk += _upl.get_upl_piece(),
+              // If OpenedSku, then increase opened count by 1
+              upl::Kind::OpenedSku {
+                sku: _,
+                amount: _,
+                successors: _,
+              } => (*stock_info).opened += _upl.get_upl_piece(),
+              // If derived product, then increase opened count by 1
+              upl::Kind::DerivedProduct {
+                derived_from: _,
+                derived_from_sku: _,
+                amount: _,
+              } => (*stock_info).opened += _upl.get_upl_piece(),
             }
           }
           _ => (),
