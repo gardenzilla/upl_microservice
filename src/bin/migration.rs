@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use migration::upl_old::UplMethods;
+use migration::upl_old::UplMethods as OldUplMethods;
 use packman::*;
-use upl_microservice::migration;
+use upl_microservice::{migration, upl::UplMethods as NewUplMethods};
 
 fn main() {
   // Init UPL DB
@@ -72,7 +72,16 @@ fn main() {
         ou.product_id,
         sku.unit.to_string(),
         sku_id,
-        ou.get_upl_piece(),
+        match ou.get_kind() {
+          migration::upl_old::Kind::OpenedSku {
+            sku: _,
+            amount: _,
+            successors: _,
+          } => ou
+            .get_divisible_amount()
+            .expect("Error getting divisible amount for bulk sku"),
+          _ => ou.get_upl_piece(),
+        },
         sku.get_divisible_amount(),
         sku.can_divide,
         price.net_retail_price,
