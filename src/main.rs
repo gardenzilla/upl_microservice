@@ -7,6 +7,7 @@ use gzlib::proto::upl::*;
 use packman::*;
 use std::{collections::HashMap, env, path::PathBuf};
 use tokio::sync::{oneshot, Mutex};
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status};
 use upl_microservice::prelude::*;
 use upl_microservice::upl::{Location, UplMethods};
@@ -695,7 +696,7 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
     Ok(Response::new(UplIds { upl_ids }))
   }
 
-  type GetBulkStream = tokio::sync::mpsc::Receiver<Result<UplObj, Status>>;
+  type GetBulkStream = ReceiverStream<Result<UplObj, Status>>;
 
   async fn get_bulk(
     &self,
@@ -715,7 +716,7 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
     });
 
     // Send back the receiver
-    Ok(Response::new(rx))
+    Ok(Response::new(ReceiverStream::new(rx)))
   }
 
   async fn get_by_id(&self, request: Request<ByIdRequest>) -> Result<Response<UplObj>, Status> {
@@ -870,8 +871,7 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
     Ok(Response::new(res))
   }
 
-  type GetLocationInfoBulkStream =
-    tokio::sync::mpsc::Receiver<Result<LocationInfoResponse, Status>>;
+  type GetLocationInfoBulkStream = ReceiverStream<Result<LocationInfoResponse, Status>>;
 
   async fn get_location_info_bulk(
     &self,
@@ -893,7 +893,7 @@ impl gzlib::proto::upl::upl_server::Upl for UplService {
     });
 
     // Send back the receiver
-    Ok(Response::new(rx))
+    Ok(Response::new(ReceiverStream::new(rx)))
   }
 
   async fn set_product_unit(
